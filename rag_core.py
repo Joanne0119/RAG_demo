@@ -17,8 +17,8 @@ COLLECTION_NAME = "docs"
 EMBED_MODEL = "bge-m3"                # 把文字轉成向量的模型
 LLM_MODEL = "qwen2.5:3b"              # 負責回答的語言模型
 
-MAX_CHARS = 600                       # 每段最多幾個字，超過就再切小
-OVERLAP = 100                         # 再切小時，相鄰兩段重疊幾個字
+MAX_CHARS = 200                       # 每段最多幾個字，超過就再切小（實驗結果見 實驗結果.md）
+OVERLAP = 50                          # 再切小時，相鄰兩段重疊幾個字
 TOP_K = 3                             # 每次檢索取回幾段
 TEMPERATURE = 0.1                     # 越低回答越穩定保守，越高越有變化
 
@@ -36,10 +36,10 @@ PROMPT_TEMPLATE = """請只根據以下參考資料回答問題。
 
 
 # ---------- 1. 讀取文件 ----------
-def load_documents():
+def load_documents(data_dir=DATA_DIR):
     """讀取 data 資料夾內所有文件，回傳 [{"source": 檔名, "text": 全文}, ...]"""
     docs = []
-    for path in sorted(DATA_DIR.iterdir()):
+    for path in sorted(Path(data_dir).iterdir()):
         suffix = path.suffix.lower()
         if suffix in (".md", ".txt"):
             text = path.read_text(encoding="utf-8")
@@ -81,18 +81,26 @@ def doc_title(doc):
     return doc["source"]
 
 
+def section_label(title, section):
+    """段首標籤：章節以「#」標題開頭時是「文件標題｜章節標題」，沒有標題的文件只用文件標題。"""
+    first_line = section.splitlines()[0]
+    if first_line.startswith("#"):
+        return f"{title}｜{first_line.lstrip('# ').strip()}"
+    return title
+
+
 def chunk_document(doc):
     """把一份文件切成多個小段，每段開頭加上「文件標題｜章節標題」。"""
     title = doc_title(doc)
 
     chunks = []
     for section in split_by_heading(doc["text"]):
-        heading = section.splitlines()[0].lstrip("# ").strip()
+        label = section_label(title, section)
         for piece in split_by_length(section):
             chunks.append({
                 "id": f"{doc['source']}_{len(chunks)}",
                 # 加上標題，讓「保固多久」這類問題能分辨是咖啡機還是黑客松
-                "text": f"【{title}｜{heading}】\n{piece}",
+                "text": f"【{label}】\n{piece}",
                 "source": doc["source"],
             })
     return chunks

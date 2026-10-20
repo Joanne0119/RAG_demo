@@ -8,6 +8,7 @@
       python experiment.py --llm                  連 LLM 回答一起評分（慢很多，含陷阱題）
       python experiment.py --llm --only baseline,parent-100
                                                   只跑指定的設定（用逗號分隔）
+      python experiment.py --data data_plain      改用其他資料夾的文件（例如沒有章節結構的版本）
 
 結果會印成表格，並存一份 CSV 到 results 資料夾。
 """
@@ -15,6 +16,7 @@ import argparse
 import csv
 import re
 import time
+from pathlib import Path
 
 import numpy as np
 
@@ -32,6 +34,7 @@ from evaluate import TESTS, TRAP_START, contains_all
 # parent：小段檢索、大段回答。用小段比對問題，但交給 LLM 的是小段所在的整個「## 」章節
 #         （只支援 strategy="heading"；top_k 代表最後取幾個不重複的章節）
 CONFIGS = [
+    # baseline = 最初的設定（600/100）；heading-200 = 目前 rag_core.py 的設定
     {"name": "baseline",        "strategy": "heading",   "max_chars": 600, "overlap": 100, "add_title": True,  "top_k": 3},
     {"name": "heading-300",     "strategy": "heading",   "max_chars": 300, "overlap": 50,  "add_title": True,  "top_k": 3},
     {"name": "heading-200",     "strategy": "heading",   "max_chars": 200, "overlap": 50,  "add_title": True,  "top_k": 3},
@@ -127,8 +130,7 @@ def make_chunks(doc, cfg):
     triples = []  # (段首標籤, 段落內容, 所屬章節)
     if cfg["strategy"] == "heading":
         for section in rag.split_by_heading(text):
-            heading = section.splitlines()[0].lstrip("# ").strip()
-            label = f"{title}｜{heading}"
+            label = rag.section_label(title, section)
             triples += [(label, p, with_label(label, section)) for p in rag.split_by_length(section, max_chars, overlap)]
     elif cfg["strategy"] == "length":
         triples = [(title, p, None) for p in rag.split_by_length(text, max_chars, overlap)]
@@ -230,6 +232,7 @@ def main():
     parser = argparse.ArgumentParser(description="比較不同切段設定的 RAG 效果")
     parser.add_argument("--llm", action="store_true", help="也讓 LLM 回答並評分（很慢）")
     parser.add_argument("--only", help="只跑指定的設定名稱，用逗號分隔，例如 baseline,parent-100")
+    parser.add_argument("--data", default=str(rag.DATA_DIR), help="知識文件的資料夾（預設 data）")
     args = parser.parse_args()
 
     configs = CONFIGS
@@ -240,7 +243,8 @@ def main():
             parser.error(f"找不到這些設定：{', '.join(sorted(unknown))}")
         configs = [c for c in CONFIGS if c["name"] in names]
 
-    docs = rag.load_documents()
+    docs = rag.load_documents(args.data)
+    print(f"文件：{args.data}（{len(docs)} 份）")
     question_vecs = embed_cached([q for q, _ in TESTS])
 
     rows = []
@@ -254,7 +258,9 @@ def main():
     print_table(rows)
 
     RESULTS_DIR.mkdir(exist_ok=True)
-    out = RESULTS_DIR / f"experiment_{time.strftime('%Y%m%d_%H%M%S')}.csv"
+    data_name = Path(args.data).resolve().name
+    suffix = "" if data_name == rag.DATA_DIR.name else f"_{data_name}"  # 用其他資料夾時，檔名加上資料夾名稱
+    out = RESULTS_DIR / f"experiment_{time.strftime('%Y%m%d_%H%M%S')}{suffix}.csv"
     with open(out, "w", newline="", encoding="utf-8-sig") as f:  # utf-8-sig：Excel 打開中文不會亂碼
         # 有些設定多了 parent 欄位，所以欄位名稱要取所有設定的聯集
         fieldnames = list(dict.fromkeys(k for cfg, row in zip(configs, rows) for k in {**cfg, **row}))
