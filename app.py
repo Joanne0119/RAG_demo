@@ -7,8 +7,8 @@ import streamlit as st
 
 import rag_core as rag
 
-st.set_page_config(page_title="本地 RAG Demo", page_icon="📚")
-st.title("📚 本地 RAG 問答 Demo")
+st.set_page_config(page_title="RAG Demo", page_icon="📚")
+st.title("📚 RAG Demo")
 st.caption(f"LLM：{rag.LLM_MODEL}　｜　Embedding：{rag.EMBED_MODEL}")
 
 # AI 還沒吐出第一個字之前，顯示跳動的「...」
