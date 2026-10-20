@@ -65,22 +65,25 @@ def split_by_heading(text):
     return [s for s in sections if s]
 
 
-def split_by_length(text):
-    """太長的段落用「滑動視窗」切小：每段 MAX_CHARS 字，相鄰兩段重疊 OVERLAP 字。"""
-    if len(text) <= MAX_CHARS:
+def split_by_length(text, max_chars=MAX_CHARS, overlap=OVERLAP):
+    """太長的段落用「滑動視窗」切小：每段 max_chars 字，相鄰兩段重疊 overlap 字。"""
+    if len(text) <= max_chars:
         return [text]
-    step = MAX_CHARS - OVERLAP
-    return [text[i:i + MAX_CHARS] for i in range(0, len(text) - OVERLAP, step)]
+    step = max_chars - overlap
+    return [text[i:i + max_chars] for i in range(0, len(text) - overlap, step)]
+
+
+def doc_title(doc):
+    """文件標題：取第一行「# 」開頭的標題，沒有的話用檔名。"""
+    for line in doc["text"].splitlines():
+        if line.startswith("# "):
+            return line[2:].strip()
+    return doc["source"]
 
 
 def chunk_document(doc):
     """把一份文件切成多個小段，每段開頭加上「文件標題｜章節標題」。"""
-    # 文件標題：取第一行「# 」開頭的標題，沒有的話用檔名
-    title = doc["source"]
-    for line in doc["text"].splitlines():
-        if line.startswith("# "):
-            title = line[2:].strip()
-            break
+    title = doc_title(doc)
 
     chunks = []
     for section in split_by_heading(doc["text"]):

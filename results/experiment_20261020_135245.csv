@@ -1,0 +1,12 @@
+﻿name,strategy,max_chars,overlap,add_title,top_k,chunks,avg_len,max_len,retrieval,answer,avg_context,missed
+baseline,heading,600,100,True,3,25,244,505,14/15,-,954,5
+heading-300,heading,300,50,True,3,29,222,339,15/15,-,753,-
+heading-200,heading,200,50,True,3,41,183,247,15/15,-,594,-
+heading-100,heading,100,30,True,3,74,126,147,15/15,-,386,-
+heading-200-ov0,heading,200,0,True,3,40,166,247,14/15,-,575,5
+no-title,heading,600,100,False,3,25,206,466,15/15,-,832,-
+length-400,length,400,100,True,3,17,420,427,14/15,-,1257,5
+length-200,length,200,50,True,3,35,222,227,13/15,-,678,4 5
+paragraph-300,paragraph,300,50,True,3,22,263,325,15/15,-,835,-
+baseline-k1,heading,600,100,True,1,25,244,505,13/15,-,341,5 14
+heading-200-k5,heading,200,50,True,5,41,183,247,15/15,-,986,-

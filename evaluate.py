@@ -37,27 +37,33 @@ def contains_all(text, keywords):
     return all(any(alt in text for alt in kw.split("|")) for kw in keywords)
 
 
-if rag.index_size() == 0:
-    print("資料庫是空的，請先執行 python ingest.py")
-    raise SystemExit
+def main():
+    if rag.index_size() == 0:
+        print("資料庫是空的，請先執行 python ingest.py")
+        raise SystemExit
 
-retrieval_ok = answer_ok = 0
-for i, (question, keywords) in enumerate(TESTS):
-    hits = rag.search(question)
-    answer = rag.generate_answer(question, hits)
+    retrieval_ok = answer_ok = 0
+    for i, (question, keywords) in enumerate(TESTS):
+        hits = rag.search(question)
+        answer = rag.generate_answer(question, hits)
 
-    is_trap = i >= TRAP_START
-    hit_ok = is_trap or contains_all("".join(h["text"] for h in hits), keywords)
-    ans_ok = contains_all(answer, keywords)
-    if not is_trap:
-        retrieval_ok += hit_ok
-    answer_ok += ans_ok
+        is_trap = i >= TRAP_START
+        hit_ok = is_trap or contains_all("".join(h["text"] for h in hits), keywords)
+        ans_ok = contains_all(answer, keywords)
+        if not is_trap:
+            retrieval_ok += hit_ok
+        answer_ok += ans_ok
 
-    mark = lambda ok: "✅" if ok else "❌"
-    print(f"\n{i + 1:>2}. {question}")
-    print(f"    檢索 {'—' if is_trap else mark(hit_ok)}   回答 {mark(ans_ok)}   關鍵字：{keywords}")
-    print(f"    {answer.strip().replace(chr(10), ' ')[:150]}")
+        mark = lambda ok: "✅" if ok else "❌"
+        print(f"\n{i + 1:>2}. {question}")
+        print(f"    檢索 {'—' if is_trap else mark(hit_ok)}   回答 {mark(ans_ok)}   關鍵字：{keywords}")
+        print(f"    {answer.strip().replace(chr(10), ' ')[:150]}")
 
-print("\n" + "=" * 50)
-print(f"檢索命中：{retrieval_ok}/{TRAP_START}")
-print(f"回答正確：{answer_ok}/{len(TESTS)}")
+    print("\n" + "=" * 50)
+    print(f"檢索命中：{retrieval_ok}/{TRAP_START}")
+    print(f"回答正確：{answer_ok}/{len(TESTS)}")
+
+
+# experiment.py 會 import 這個檔案的測試題，所以直接執行時才跑評分
+if __name__ == "__main__":
+    main()
