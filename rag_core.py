@@ -181,8 +181,9 @@ def generate_answer(question, hits):
     return resp["message"]["content"]
 
 
-def stream_answer(question, hits):
-    """邊生成邊輸出（像 ChatGPT 一個字一個字跑出來），給網頁介面用。"""
+def stream_answer(question, hits, stats=None):
+    """邊生成邊輸出（像 ChatGPT 一個字一個字跑出來），給網頁介面用。
+    有傳入 stats（dict）的話，生成結束後會填入 Ollama 回報的 token 數與生成時間。"""
     for part in ollama.chat(
         model=LLM_MODEL,
         messages=build_messages(question, hits),
@@ -190,3 +191,9 @@ def stream_answer(question, hits):
         stream=True,
     ):
         yield part["message"]["content"]
+        if part.done and stats is not None:
+            stats.update(
+                prompt_tokens=part.prompt_eval_count,  # 輸入（prompt）token 數
+                output_tokens=part.eval_count,         # 輸出（回答）token 數
+                eval_seconds=part.eval_duration / 1e9, # 生成回答花的時間
+            )

@@ -165,10 +165,31 @@ def embed_cached(texts):
     return vectors / np.linalg.norm(vectors, axis=1, keepdims=True)  # 正規化後內積 = cosine 相似度
 
 
+# ---------- 建索引、檢索（app.py 的比較模式也會用到） ----------
+def build_config_index(cfg, docs):
+    """依設定切段並向量化，回傳 (段落清單, 正規化後的向量矩陣)。"""
+    chunks = [c for doc in docs for c in make_chunks(doc, cfg)]
+    return chunks, embed_cached([c["text"] for c in chunks])
+
+
+def retrieve(cfg, chunks, similarity):
+    """similarity 是問題和每一段的相似度。依相似度由高到低取 top_k 段；
+    parent 模式改成取段落所屬的章節，重複的章節跳過。"""
+    hits, seen = [], set()
+    for j in np.argsort(-similarity):
+        text = chunks[j]["parent"] if cfg.get("parent") else chunks[j]["text"]
+        if text in seen:
+            continue
+        seen.add(text)
+        hits.append({"text": text, "source": chunks[j]["source"], "distance": 1 - float(similarity[j])})
+        if len(hits) == cfg["top_k"]:
+            break
+    return hits
+
+
 # ---------- 跑一組設定 ----------
 def run_config(cfg, docs, question_vecs, use_llm):
-    chunks = [c for doc in docs for c in make_chunks(doc, cfg)]
-    chunk_vecs = embed_cached([c["text"] for c in chunks])
+    chunks, chunk_vecs = build_config_index(cfg, docs)
     similarity = question_vecs @ chunk_vecs.T  # [題數, 段數]
 
     retrieval_ok = answer_ok = context_chars = 0
@@ -178,16 +199,7 @@ def run_config(cfg, docs, question_vecs, use_llm):
         if is_trap and not use_llm:
             continue
 
-        # 依相似度由高到低取段落；parent 模式改成取段落所屬的章節，重複的章節跳過
-        hits, seen = [], set()
-        for j in np.argsort(-similarity[i]):
-            text = chunks[j]["parent"] if cfg.get("parent") else chunks[j]["text"]
-            if text in seen:
-                continue
-            seen.add(text)
-            hits.append({"text": text, "source": chunks[j]["source"], "distance": 1 - float(similarity[i, j])})
-            if len(hits) == cfg["top_k"]:
-                break
+        hits = retrieve(cfg, chunks, similarity[i])
 
         if not is_trap:
             context_chars += sum(len(h["text"]) for h in hits)
