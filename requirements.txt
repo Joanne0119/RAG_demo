@@ -1,0 +1,4 @@
+ollama
+chromadb
+pymupdf
+streamlit

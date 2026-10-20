@@ -1,0 +1,7 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# 向量資料庫（可用 python ingest.py 重建）
+chroma_db/
