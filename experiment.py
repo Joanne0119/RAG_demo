@@ -193,7 +193,7 @@ def run_config(cfg, docs, question_vecs, use_llm):
     similarity = question_vecs @ chunk_vecs.T  # [題數, 段數]
 
     retrieval_ok = answer_ok = context_chars = 0
-    missed = []
+    missed, wrong = [], []  # 檢索沒命中、回答錯誤的題號
     for i, (question, keywords) in enumerate(TESTS):
         is_trap = i >= TRAP_START
         if is_trap and not use_llm:
@@ -209,7 +209,10 @@ def run_config(cfg, docs, question_vecs, use_llm):
                 missed.append(i + 1)
 
         if use_llm:
-            answer_ok += contains_all(rag.generate_answer(question, hits), keywords)
+            if contains_all(rag.generate_answer(question, hits), keywords):
+                answer_ok += 1
+            else:
+                wrong.append(i + 1)
 
     lengths = [len(c["text"]) for c in chunks]
     return {
@@ -221,13 +224,14 @@ def run_config(cfg, docs, question_vecs, use_llm):
         "answer": f"{answer_ok}/{len(TESTS)}" if use_llm else "-",
         "avg_context": round(context_chars / TRAP_START),
         "missed": " ".join(map(str, missed)) or "-",
+        "wrong": (" ".join(map(str, wrong)) or "-") if use_llm else "",
     }
 
 
 def print_table(rows):
     headers = {
         "name": "設定", "chunks": "段數", "avg_len": "平均字數", "max_len": "最長",
-        "retrieval": "檢索命中", "answer": "回答正確", "avg_context": "每題上下文字數", "missed": "沒命中的題號",
+        "retrieval": "檢索命中", "answer": "回答正確", "avg_context": "每題上下文字數", "missed": "沒命中的題號", "wrong": "答錯的題號",
     }
     # 中文字在終端機佔兩格，算寬度時要考慮
     width = lambda s: sum(2 if ord(ch) > 0x2E80 else 1 for ch in str(s))

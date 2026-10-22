@@ -1,0 +1,8 @@
+﻿name,strategy,max_chars,overlap,add_title,top_k,chunks,avg_len,max_len,retrieval,answer,avg_context,missed,wrong,parent
+baseline,heading,600,100,True,3,8,582,629,30/32,29/36,1714,17 19,11 12 17 18 19 26 30,
+heading-200,heading,200,50,True,3,25,228,229,32/32,29/36,684,-,11 12 20 26 30 31 32,
+heading-100,heading,100,30,True,3,55,127,129,31/32,28/36,386,19,12 15 19 20 25 30 31 33,
+paragraph-300,paragraph,300,50,True,3,18,271,329,31/32,25/36,890,16,7 11 12 16 17 18 20 26 29 30 32,
+recursive-200,recursive,200,50,True,3,27,175,223,31/32,29/36,544,2,2 11 12 15 17 18 30,
+parent-100,heading,100,30,True,3,55,127,129,32/32,29/36,3882,-,12 14 17 19 20 27 30,True
+parent-200,heading,200,50,True,3,25,228,229,32/32,29/36,3882,-,11 12 14 17 18 20 30,True

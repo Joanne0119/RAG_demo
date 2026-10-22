@@ -37,15 +37,45 @@ SERIES_COLORS = {"Structured docs": "#2a78d6", "Unstructured docs": "#eb6834"}
 SURFACE, INK, INK_2, MUTED, GRID, AXIS = "#fcfcfb", "#0b0b0b", "#52514e", "#898781", "#e1e0d9", "#c3c2b7"
 # 散佈圖上標籤要放在點左邊的（避免和旁邊的點重疊）
 LABEL_LEFT = {("Structured docs", "heading-200")}
+
+# 逐題熱力圖用的「含答錯題號」的 LLM 結果（experiment.py 有 wrong 欄位之後才有）
+DETAIL_FILES = {
+    "Structured docs": "experiment_20261022_021218.csv",
+    "Unstructured docs": "experiment_20261022_022917_data_plain.csv",
+}
+
+# 每題的英文短標籤，順序和 evaluate.py 的 TESTS 一樣
+QUESTION_LABELS = [
+    "E03 error code", "Descaling interval", "Descaling duration", "App can't find machine",
+    "Coffee too weak", "Warranty length", "Ground coffee amount", "Milk froth temperature",
+    "Registration deadline", "Team size", "Outside student as leader", "Registration fee",
+    "1st prize & tax", "Code submission deadline", "Tech completeness weight",
+    "Kids using the machine", "Placing against a wall", "Dual-band router", "Adjust grind anytime",
+    "Graduates eligible", "Latte default volume", "Double espresso max", "2nd prize amount",
+    "Filter replacement", "Support closing time", "Contact phone extension", "E05 & E09 fixes",
+    "Final venue & start time", "Fee and deposit", "Longest warranty", "Warranty exclusions",
+    "Number of finalist teams",
+    "Iced coffee", "Parking", "Machine price", "Travel subsidy",
+]
+# 題型分組：(名稱, 第一題, 最後一題)
+QUESTION_GROUPS = [
+    ("Basic", 1, 15), ("Paraphrase", 16, 20), ("Table detail", 21, 24),
+    ("Confusable", 25, 27), ("Multi-part / reasoning", 28, 32), ("Trap (no answer)", 33, 36),
+]
+CORRECT_COLOR, WRONG_COLOR = "#cde2fb", "#eb6834"
 # =====================================================
+
+
+def load_file(filename):
+    with open(RESULTS_DIR / filename, encoding="utf-8-sig") as f:
+        return {row["name"]: row for row in csv.DictReader(f)}
 
 
 def load(kind):
     """讀取每種文件的某一類結果，回傳 {文件種類: {設定名稱: 那一列}}"""
     data = {}
     for series, files in RESULT_FILES.items():
-        with open(RESULTS_DIR / files[kind], encoding="utf-8-sig") as f:
-            data[series] = {row["name"]: row for row in csv.DictReader(f)}
+        data[series] = load_file(files[kind])
     return data
 
 
@@ -168,6 +198,70 @@ def chunk_size_effect(retrieval, answers):
     save(fig, "chunk_size_effect.png")
 
 
+def per_question_heatmap(data, column, n_questions, title, subtitle, filename):
+    """逐題熱力圖：每一列是一題、每一欄是一個設定，答錯（或沒命中）的格子標成橘色並打 ×。
+    左右兩張小圖分別是有結構、無結構的文件。"""
+    import numpy as np
+    from matplotlib.colors import ListedColormap
+    from matplotlib.patches import Patch
+
+    assert len(QUESTION_LABELS) == len(exp.TESTS), "QUESTION_LABELS 要和 evaluate.py 的 TESTS 一樣多"
+    seen = {name for rows in data.values() for name in rows}
+    names = [c["name"] for c in exp.CONFIGS if c["name"] in seen]
+    groups = [g for g in QUESTION_GROUPS if g[1] <= n_questions]
+
+    cell = 0.26
+    fig, axes = plt.subplots(1, 2, figsize=(2 * cell * len(names) + 4.8, cell * n_questions + 2.4),
+                             facecolor=SURFACE, sharey=True)
+    for ax, (series, rows) in zip(axes, data.items()):
+        grid = np.full((n_questions, len(names)), np.nan)
+        totals = []
+        for j, name in enumerate(names):
+            if name not in rows or rows[name][column] in ("", None):
+                totals.append("")
+                continue
+            failed = {int(q) for q in rows[name][column].split() if q.isdigit()}
+            grid[:, j] = [0 if q in failed else 1 for q in range(1, n_questions + 1)]
+            totals.append(str(n_questions - len(failed)))
+
+        ax.pcolormesh(grid, cmap=ListedColormap([WRONG_COLOR, CORRECT_COLOR]), vmin=0, vmax=1,
+                      edgecolors=SURFACE, linewidth=1.5)
+        for q, j in zip(*np.where(grid == 0)):
+            ax.text(j + 0.5, q + 0.5, "×", ha="center", va="center", fontsize=8, color="white", fontweight="bold")
+        for q, j in zip(*np.where(np.isnan(grid))):
+            ax.text(j + 0.5, q + 0.5, "–", ha="center", va="center", fontsize=8, color=MUTED)
+
+        # 題型之間留一條較粗的空白
+        for _, first, _ in groups[1:]:
+            ax.axhline(first - 1, color=SURFACE, linewidth=5)
+        # 欄底下寫每個設定的總分
+        for j, total in enumerate(totals):
+            ax.text(j + 0.5, n_questions + 0.6, total, ha="center", va="top", fontsize=8, color=INK)
+
+        ax.set_ylim(n_questions, 0)
+        ax.set_xticks([j + 0.5 for j in range(len(names))], names, rotation=55, ha="left", rotation_mode="anchor")
+        ax.xaxis.tick_top()
+        ax.set_yticks([q + 0.5 for q in range(n_questions)],
+                      [f"Q{q + 1}  {QUESTION_LABELS[q]}" for q in range(n_questions)])
+        for side in ax.spines.values():
+            side.set_visible(False)
+        ax.tick_params(colors=INK_2, labelsize=8, length=0)
+        ax.set_xlabel(series, color=INK, fontsize=10, fontweight="bold", labelpad=22)
+
+    # 題型名稱寫在右邊那張圖的右側
+    for name, first, last in groups:
+        axes[1].text(len(names) + 0.4, (first - 1 + min(last, n_questions)) / 2, name,
+                     va="center", fontsize=8, color=INK_2)
+
+    fig.suptitle(title, x=0.02, ha="left", fontsize=13, color=INK, fontweight="bold")
+    fig.text(0.02, 0.955 - 0.25 / fig.get_figheight(), subtitle, fontsize=9, color=INK_2)
+    fig.legend(handles=[Patch(color=CORRECT_COLOR, label="Correct"), Patch(color=WRONG_COLOR, label="Wrong  (×)")],
+               loc="lower right", frameon=False, fontsize=9, labelcolor=INK_2, ncol=2)
+    fig.text(0.02, 0.01, "Numbers below each column = total correct for that config.", fontsize=8, color=MUTED)
+    fig.subplots_adjust(top=1 - 2.0 / fig.get_figheight(), bottom=0.9 / fig.get_figheight(), wspace=0.08)
+    save(fig, filename)
+
+
 def main():
     retrieval, answers = load("retrieval"), load("answer")
     dot_plot(retrieval, "retrieval", N_RETRIEVAL, "Retrieval hit rate by config",
@@ -178,6 +272,12 @@ def main():
              legend_loc="lower right")
     accuracy_vs_context(answers)
     chunk_size_effect(retrieval, answers)
+    per_question_heatmap(retrieval, "missed", N_RETRIEVAL, "Retrieval by question",
+                         "Did the retrieved chunks contain the answer? (traps excluded)", "per_question_retrieval.png")
+    if all((RESULTS_DIR / f).exists() for f in DETAIL_FILES.values()):
+        details = {series: load_file(f) for series, f in DETAIL_FILES.items()}
+        per_question_heatmap(details, "wrong", N_ANSWER, "LLM answers by question",
+                             "Did qwen2.5:3b's answer contain every keyword? (separate rerun)", "per_question_answers.png")
 
 
 if __name__ == "__main__":
