@@ -1,0 +1,9 @@
+﻿name,strategy,max_chars,overlap,add_title,top_k,chunks,avg_len,max_len,retrieval,answer,avg_context,missed,wrong
+baseline,heading,600,100,True,3,248,618,620,28/32,-,1860,6 13 17 26,
+heading-300,heading,300,50,True,3,495,320,320,27/32,-,960,6 13 14 16 17,
+heading-200,heading,200,50,True,3,824,220,220,26/32,-,660,4 6 13 16 21 25,
+heading-100,heading,100,30,True,3,1766,120,120,26/32,-,360,13 14 17 25 26 28,
+table-100,table,100,30,True,3,1753,126,2327,30/32,-,408,16 17,
+table-200,table,200,50,True,3,841,220,2327,29/32,-,629,16 17 32,
+table-300,table,300,50,True,3,521,307,2327,31/32,-,824,16,
+table-600,table,600,100,True,3,281,542,2327,29/32,-,1301,16 17 28,

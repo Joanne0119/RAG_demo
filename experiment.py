@@ -33,6 +33,8 @@ from evaluate import contains_all
 #   paragraph 依空行切成段落，再把相鄰段落合併到接近 max_chars
 #   recursive 遞迴切分：依序嘗試用 空行 → 換行 → 句號 → 逗號 切，切不夠小才換下一種，
 #             再把相鄰小塊合併到接近 max_chars（類似 LangChain 的 RecursiveCharacterTextSplitter）
+#   table     和 heading 一樣，但 Markdown 表格不從中間硬切：按列切，每段都重複表格標題和表頭
+#             （PDF 要用 --tables 讀取才會有表格；沒有表格的文件結果和 heading 相同）
 #   token     和 heading 一樣先依章節切，但長度用 token 算：max_chars、overlap 在這裡代表「幾個 token」
 #             token 用 embedding 模型 bge-m3 自己的 tokenizer 計算（中文約 1.5 字 = 1 token，英文約 3.4 字元）
 # add_title：段首要不要加上「【文件標題｜章節標題】」
@@ -81,6 +83,11 @@ CONFIGS = [
     {"name": "vector-en-200",   "strategy": "heading",   "max_chars": 200, "overlap": 50,  "add_title": True,  "top_k": 3, "query_en": "all"},
     {"name": "vector-en-300",   "strategy": "heading",   "max_chars": 300, "overlap": 50,  "add_title": True,  "top_k": 3, "query_en": "all"},
     {"name": "vector-en-600",   "strategy": "heading",   "max_chars": 600, "overlap": 100, "add_title": True,  "top_k": 3, "query_en": "all"},
+    # 表格不從中間硬切：按列切，每段都附上表格標題和表頭（要搭配 --tables 才有表格）
+    {"name": "table-100",       "strategy": "table",     "max_chars": 100, "overlap": 30,  "add_title": True,  "top_k": 3},
+    {"name": "table-200",       "strategy": "table",     "max_chars": 200, "overlap": 50,  "add_title": True,  "top_k": 3},
+    {"name": "table-300",       "strategy": "table",     "max_chars": 300, "overlap": 50,  "add_title": True,  "top_k": 3},
+    {"name": "table-600",       "strategy": "table",     "max_chars": 600, "overlap": 100, "add_title": True,  "top_k": 3},
 ]
 TRANSLATE_PROMPT = """Translate the following question into English for searching a technical document.
 Keep part numbers, register names, units and numbers unchanged. Output only the English question.
@@ -144,6 +151,84 @@ def split_recursive(text, max_chars, overlap, separators=RECURSIVE_SEPARATORS):
     return [c.strip() for c in chunks if c.strip()]
 
 
+# ---------- 讀 PDF 時辨識表格（--tables） ----------
+def pdf_text_with_tables(path):
+    """逐頁讀 PDF：pymupdf 找到的表格轉成 Markdown 表格，其他文字照舊。
+    純文字版的表格會變成「一行一個欄位」，表頭和數值分開；轉成 Markdown 後每一列都是完整的一行。
+    文字區塊維持 PDF 原本的閱讀順序（不能依座標重排，兩欄排版的頁面左右欄會交錯），
+    表格放在它的第一個文字區塊原本的位置。"""
+    import pymupdf
+
+    pages = []
+    with pymupdf.open(path) as pdf:
+        for page in pdf:
+            tables = page.find_tables().tables
+            boxes = [pymupdf.Rect(t.bbox) for t in tables]
+            markdowns = [t.to_markdown().replace("<br>", " ").replace("**", "").strip() for t in tables]  # 儲存格內換行改成空白
+            parts, placed = [], set()
+            for x0, y0, x1, y1, text, *_ in page.get_text("blocks"):
+                center = pymupdf.Point((x0 + x1) / 2, (y0 + y1) / 2)
+                inside = next((k for k, box in enumerate(boxes) if center in box), None)
+                if inside is None:
+                    parts.append(text.strip())
+                elif inside not in placed:  # 表格裡的文字改由 Markdown 表格提供，只在第一次遇到時放一次
+                    parts.append(f"\n{markdowns[inside]}\n")
+                    placed.add(inside)
+            parts += [f"\n{md}\n" for k, md in enumerate(markdowns) if k not in placed]  # 沒有文字區塊落在裡面的表格
+            pages.append("\n".join(p for p in parts if p))
+    return "\n".join(pages)
+
+
+def load_documents_with_tables(data_dir):
+    """和 rag.load_documents 一樣，但 PDF 改用 pdf_text_with_tables 讀取。"""
+    docs = rag.load_documents(data_dir)
+    for doc in docs:
+        if doc["source"].lower().endswith(".pdf"):
+            doc["text"] = pdf_text_with_tables(Path(data_dir) / doc["source"])
+    return docs
+
+
+CAPTION_LINES = 3       # 表格標題最多取表格前幾行文字
+CAPTION_MAX_REPEAT = 5  # 在文件中出現這麼多次以上的行視為頁首頁尾
+
+
+def split_keeping_tables(text, max_chars, overlap):
+    """一般文字照 split_by_length 切；Markdown 表格按列切，每段 = 表格標題 + 表頭 + 幾列，
+    就算超過 max_chars 也至少放一列，確保每一列都和表頭在同一段。"""
+    lines = text.split("\n")
+    # 頁首頁尾（例如「RP2040 Datasheet」）每頁都出現，不能拿來當表格標題
+    counts = {}
+    for l in lines:
+        counts[l.strip()] = counts.get(l.strip(), 0) + 1
+    is_caption = lambda l: l.strip() and not l.strip().isdigit() and counts[l.strip()] < CAPTION_MAX_REPEAT
+    pieces, buffer, i = [], [], 0
+    flush = lambda: pieces.extend(rag.split_by_length("\n".join(buffer).strip(), max_chars, overlap)) if "".join(buffer).strip() else None
+    while i < len(lines):
+        if not lines[i].startswith("|"):
+            buffer.append(lines[i])
+            i += 1
+            continue
+        # 表格開始：表格標題 = 表格前最多 CAPTION_LINES 行文字（例如「Table 190. BOD」或所在章節名稱），跳過頁碼和頁首頁尾
+        caption = " ".join(reversed([l.strip() for l in reversed(buffer) if is_caption(l)][:CAPTION_LINES]))
+        flush()
+        buffer = []
+        rows = []
+        while i < len(lines) and lines[i].startswith("|"):
+            rows.append(lines[i])
+            i += 1
+        header, body = rows[:2], rows[2:]  # 前兩行是表頭和 |---| 分隔線
+        prefix = "\n".join(([caption] if caption else []) + header)
+        current = []
+        for row in body:
+            if current and len(prefix) + sum(len(r) + 1 for r in current) + len(row) > max_chars:
+                pieces.append(prefix + "\n" + "\n".join(current))
+                current = []
+            current.append(row)
+        pieces.append(prefix + ("\n" + "\n".join(current) if current else ""))
+    flush()
+    return [p for p in pieces if p.strip()]
+
+
 _tokenizer = None
 
 
@@ -188,6 +273,10 @@ def make_chunks(doc, cfg):
         for section in rag.split_by_heading(text):
             label = rag.section_label(title, section)
             triples += [(label, p, with_label(label, section)) for p in rag.split_by_length(section, max_chars, overlap)]
+    elif cfg["strategy"] == "table":
+        for section in rag.split_by_heading(text):
+            label = rag.section_label(title, section)
+            triples += [(label, p, None) for p in split_keeping_tables(section, max_chars, overlap)]
     elif cfg["strategy"] == "token":
         for section in rag.split_by_heading(text):
             label = rag.section_label(title, section)
@@ -393,6 +482,7 @@ def main():
     parser.add_argument("--only", help="只跑指定的設定名稱，用逗號分隔，例如 baseline,parent-100")
     parser.add_argument("--data", default=str(rag.DATA_DIR), help="知識文件的資料夾（預設 data）")
     parser.add_argument("--tests", default="evaluate", help="測試題所在的模組，要有 TESTS 和 TRAP_START（預設 evaluate）")
+    parser.add_argument("--tables", action="store_true", help="讀 PDF 時辨識表格，轉成 Markdown 表格（較慢）")
     args = parser.parse_args()
 
     configs = CONFIGS
@@ -406,7 +496,7 @@ def main():
     tests_module = importlib.import_module(args.tests)
     tests, trap_start = tests_module.TESTS, tests_module.TRAP_START
 
-    docs = rag.load_documents(args.data)
+    docs = load_documents_with_tables(args.data) if args.tables else rag.load_documents(args.data)
     print(f"文件：{args.data}（{len(docs)} 份）　測試題：{args.tests}（{len(tests)} 題）")
     question_vecs = embed_cached([q for q, _ in tests])
 
@@ -423,6 +513,8 @@ def main():
     RESULTS_DIR.mkdir(exist_ok=True)
     data_name = Path(args.data).resolve().name
     suffix = "" if data_name == rag.DATA_DIR.name else f"_{data_name}"  # 用其他資料夾時，檔名加上資料夾名稱
+    if args.tables:
+        suffix += "_tables"
     out = RESULTS_DIR / f"experiment_{time.strftime('%Y%m%d_%H%M%S')}{suffix}.csv"
     with open(out, "w", newline="", encoding="utf-8-sig") as f:  # utf-8-sig：Excel 打開中文不會亂碼
         # 有些設定多了 parent 欄位，所以欄位名稱要取所有設定的聯集
