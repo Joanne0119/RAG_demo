@@ -20,7 +20,8 @@ LLM_MODEL = "qwen2.5:3b"              # 負責回答的語言模型
 MAX_CHARS = 200                       # 每段最多幾個字，超過就再切小（實驗結果見 實驗結果.md）
 OVERLAP = 50                          # 再切小時，相鄰兩段重疊幾個字
 TOP_K = 3                             # 每次檢索取回幾段
-TEMPERATURE = 0.1                     # 越低回答越穩定保守，越高越有變化
+TEMPERATURE = 0                       # 越低回答越穩定保守，越高越有變化；0 = 每次都選機率最高的字
+SEED = 42                             # 固定隨機種子，同樣的輸入每次產生同樣的回答（實驗才能重現）
 
 SYSTEM_PROMPT = "你是一個客服助理，只根據提供的參考資料回答問題，一律使用繁體中文回答。"
 
@@ -176,7 +177,7 @@ def generate_answer(question, hits):
     resp = ollama.chat(
         model=LLM_MODEL,
         messages=build_messages(question, hits),
-        options={"temperature": TEMPERATURE},
+        options={"temperature": TEMPERATURE, "seed": SEED},
     )
     return resp["message"]["content"]
 
@@ -187,7 +188,7 @@ def stream_answer(question, hits, stats=None):
     for part in ollama.chat(
         model=LLM_MODEL,
         messages=build_messages(question, hits),
-        options={"temperature": TEMPERATURE},
+        options={"temperature": TEMPERATURE, "seed": SEED},
         stream=True,
     ):
         yield part["message"]["content"]

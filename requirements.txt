@@ -3,3 +3,4 @@ chromadb
 pymupdf
 streamlit
 matplotlib
+tokenizers

@@ -1,0 +1,5 @@
+﻿name,strategy,max_chars,overlap,add_title,top_k,hybrid,chunks,avg_len,max_len,retrieval,answer,avg_context,missed,wrong
+hybrid-100,heading,100,30,True,3,True,55,127,129,32/32,-,386,-,
+hybrid-200,heading,200,50,True,3,True,25,228,229,32/32,-,684,-,
+hybrid-300,heading,300,50,True,3,True,15,327,329,32/32,-,979,-,
+hybrid-600,heading,600,100,True,3,True,8,582,629,31/32,-,1744,17,

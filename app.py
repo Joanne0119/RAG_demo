@@ -150,7 +150,8 @@ def config_index(name, data_dir):
 
 
 def describe(cfg):
-    text = f"`{cfg['strategy']}`　每段 ≤ {cfg['max_chars']} 字、重疊 {cfg['overlap']}、Top-K {cfg['top_k']}"
+    unit = "token" if cfg["strategy"] == "token" else "字"
+    text = f"`{cfg['strategy']}`　每段 ≤ {cfg['max_chars']} {unit}、重疊 {cfg['overlap']}、Top-K {cfg['top_k']}"
     if not cfg["add_title"]:
         text += "、不加段首標題"
     if cfg.get("parent"):
@@ -212,9 +213,11 @@ def compare_page():
 
                     def search(cfg=cfg, chunks=chunks, chunk_vecs=chunk_vecs):
                         # 不用快取，A、B 都實際向量化一次，檢索時間才公平
-                        question_vec = np.array(rag.embed([question])[0], dtype=np.float32)
+                        search_q = exp.translate_to_english(question) if cfg.get("query_en") else question
+                        vec_q = search_q if cfg.get("query_en") == "all" else question
+                        question_vec = np.array(rag.embed([vec_q])[0], dtype=np.float32)
                         question_vec /= np.linalg.norm(question_vec)
-                        return exp.retrieve(cfg, chunks, chunk_vecs @ question_vec)
+                        return exp.retrieve(cfg, chunks, chunk_vecs @ question_vec, search_q)
 
                     answer, metrics = answer_with_metrics(question, search, with_sources)
                 record[side] = {"name": cfg["name"], "content": answer, "metrics": metrics}

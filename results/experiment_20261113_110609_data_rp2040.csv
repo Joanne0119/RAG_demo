@@ -1,0 +1,5 @@
+﻿name,strategy,max_chars,overlap,add_title,top_k,hybrid,chunks,avg_len,max_len,retrieval,answer,avg_context,missed,wrong
+hybrid-100,heading,100,30,True,3,True,1185,123,123,12/32,-,369,1 5 6 7 10 11 13 14 16 18 19 20 21 22 23 24 26 28 30 32,
+hybrid-200,heading,200,50,True,3,True,553,223,223,19/32,-,669,1 4 13 16 19 20 21 22 23 24 28 30 32,
+hybrid-300,heading,300,50,True,3,True,332,323,323,20/32,-,969,3 4 5 14 16 18 19 20 21 23 28 31,
+hybrid-600,heading,600,100,True,3,True,166,622,623,28/32,-,1869,3 18 20 21,

@@ -9,11 +9,14 @@
       python experiment.py --llm --only baseline,parent-100
                                                   只跑指定的設定（用逗號分隔）
       python experiment.py --data data_plain      改用其他資料夾的文件（例如沒有章節結構的版本）
+      python experiment.py --data data_car --tests tests_car
+                                                  換一組測試題（tests_car.py / tests_rp2040.py，PDF 用 download_manuals.py 下載）
 
 結果會印成表格，並存一份 CSV 到 results 資料夾。
 """
 import argparse
 import csv
+import importlib
 import re
 import time
 from pathlib import Path
@@ -21,7 +24,7 @@ from pathlib import Path
 import numpy as np
 
 import rag_core as rag
-from evaluate import TESTS, TRAP_START, contains_all
+from evaluate import contains_all
 
 # ==================== 要比較的設定（可自行增減） ====================
 # strategy：
@@ -30,7 +33,13 @@ from evaluate import TESTS, TRAP_START, contains_all
 #   paragraph 依空行切成段落，再把相鄰段落合併到接近 max_chars
 #   recursive 遞迴切分：依序嘗試用 空行 → 換行 → 句號 → 逗號 切，切不夠小才換下一種，
 #             再把相鄰小塊合併到接近 max_chars（類似 LangChain 的 RecursiveCharacterTextSplitter）
+#   token     和 heading 一樣先依章節切，但長度用 token 算：max_chars、overlap 在這裡代表「幾個 token」
+#             token 用 embedding 模型 bge-m3 自己的 tokenizer 計算（中文約 1.5 字 = 1 token，英文約 3.4 字元）
 # add_title：段首要不要加上「【文件標題｜章節標題】」
+# hybrid：混合檢索。向量檢索和 BM25 關鍵字檢索各排一次名，再用 RRF 合併（型號、專有名詞比較找得到）
+# query_en：先用 LLM 把問題翻成英文再檢索（給英文文件用；回答時仍用原本的中文問題）
+#   "keyword" 只有 BM25 用英文問題，向量檢索仍用原本的問題
+#   "all"     向量檢索和 BM25 都用英文問題
 # parent：小段檢索、大段回答。用小段比對問題，但交給 LLM 的是小段所在的整個「## 」章節
 #         （只支援 strategy="heading"；top_k 代表最後取幾個不重複的章節）
 CONFIGS = [
@@ -52,8 +61,34 @@ CONFIGS = [
     {"name": "parent-100",      "strategy": "heading",   "max_chars": 100, "overlap": 30,  "add_title": True,  "top_k": 3, "parent": True},
     {"name": "parent-200",      "strategy": "heading",   "max_chars": 200, "overlap": 50,  "add_title": True,  "top_k": 3, "parent": True},
     {"name": "parent-100-k2",   "strategy": "heading",   "max_chars": 100, "overlap": 30,  "add_title": True,  "top_k": 2, "parent": True},
+    # 用 token 算長度（重疊 25%）
+    {"name": "token-32",        "strategy": "token",     "max_chars": 32,  "overlap": 8,   "add_title": True,  "top_k": 3},
+    {"name": "token-64",        "strategy": "token",     "max_chars": 64,  "overlap": 16,  "add_title": True,  "top_k": 3},
+    {"name": "token-128",       "strategy": "token",     "max_chars": 128, "overlap": 32,  "add_title": True,  "top_k": 3},
+    {"name": "token-256",       "strategy": "token",     "max_chars": 256, "overlap": 64,  "add_title": True,  "top_k": 3},
+    {"name": "token-512",       "strategy": "token",     "max_chars": 512, "overlap": 128, "add_title": True,  "top_k": 3},
+    # 混合檢索：向量 + BM25 關鍵字，用 RRF 合併排名。切法分別和 heading-100 / 200 / 300 / baseline 相同
+    {"name": "hybrid-100",      "strategy": "heading",   "max_chars": 100, "overlap": 30,  "add_title": True,  "top_k": 3, "hybrid": True},
+    {"name": "hybrid-200",      "strategy": "heading",   "max_chars": 200, "overlap": 50,  "add_title": True,  "top_k": 3, "hybrid": True},
+    {"name": "hybrid-300",      "strategy": "heading",   "max_chars": 300, "overlap": 50,  "add_title": True,  "top_k": 3, "hybrid": True},
+    {"name": "hybrid-600",      "strategy": "heading",   "max_chars": 600, "overlap": 100, "add_title": True,  "top_k": 3, "hybrid": True},
+    # 問題先翻成英文（給英文文件用）：hybrid-en = 混合檢索但 BM25 用英文問題；vector-en = 只用向量、問題換成英文
+    {"name": "hybrid-en-100",   "strategy": "heading",   "max_chars": 100, "overlap": 30,  "add_title": True,  "top_k": 3, "hybrid": True, "query_en": "keyword"},
+    {"name": "hybrid-en-200",   "strategy": "heading",   "max_chars": 200, "overlap": 50,  "add_title": True,  "top_k": 3, "hybrid": True, "query_en": "keyword"},
+    {"name": "hybrid-en-300",   "strategy": "heading",   "max_chars": 300, "overlap": 50,  "add_title": True,  "top_k": 3, "hybrid": True, "query_en": "keyword"},
+    {"name": "hybrid-en-600",   "strategy": "heading",   "max_chars": 600, "overlap": 100, "add_title": True,  "top_k": 3, "hybrid": True, "query_en": "keyword"},
+    {"name": "vector-en-100",   "strategy": "heading",   "max_chars": 100, "overlap": 30,  "add_title": True,  "top_k": 3, "query_en": "all"},
+    {"name": "vector-en-200",   "strategy": "heading",   "max_chars": 200, "overlap": 50,  "add_title": True,  "top_k": 3, "query_en": "all"},
+    {"name": "vector-en-300",   "strategy": "heading",   "max_chars": 300, "overlap": 50,  "add_title": True,  "top_k": 3, "query_en": "all"},
+    {"name": "vector-en-600",   "strategy": "heading",   "max_chars": 600, "overlap": 100, "add_title": True,  "top_k": 3, "query_en": "all"},
 ]
+TRANSLATE_PROMPT = """Translate the following question into English for searching a technical document.
+Keep part numbers, register names, units and numbers unchanged. Output only the English question.
+
+{question}"""
+TOKENIZER_NAME = "BAAI/bge-m3"  # 第一次使用會從 Hugging Face 下載（約 17 MB），之後用快取
 RESULTS_DIR = rag.BASE_DIR / "results"
+EMBED_BATCH = 64  # 一次送幾段去向量化（長篇 PDF 會切出上千段，一次全送太吃記憶體）
 # ===================================================================
 
 
@@ -109,6 +144,27 @@ def split_recursive(text, max_chars, overlap, separators=RECURSIVE_SEPARATORS):
     return [c.strip() for c in chunks if c.strip()]
 
 
+_tokenizer = None
+
+
+def split_by_tokens(text, max_tokens, overlap):
+    """滑動視窗，但長度用 token 算：每段 max_tokens 個 token，相鄰兩段重疊 overlap 個 token。
+    用 tokenizer 回傳的位置（offsets）切原文，所以段落內容和原文一字不差。"""
+    global _tokenizer
+    if _tokenizer is None:
+        from tokenizers import Tokenizer
+        _tokenizer = Tokenizer.from_pretrained(TOKENIZER_NAME)
+    offsets = _tokenizer.encode(text, add_special_tokens=False).offsets
+    if len(offsets) <= max_tokens:
+        return [text]
+    step = max_tokens - overlap
+    pieces = []
+    for i in range(0, len(offsets) - overlap, step):
+        window = offsets[i:i + max_tokens]
+        pieces.append(text[window[0][0]:window[-1][1]].strip())
+    return [p for p in pieces if p]
+
+
 def heading_at(text, piece):
     """找出 piece 在原文中位於哪個「## 」章節底下，找不到回傳 None。"""
     pos = text.find(piece[:50])
@@ -132,6 +188,10 @@ def make_chunks(doc, cfg):
         for section in rag.split_by_heading(text):
             label = rag.section_label(title, section)
             triples += [(label, p, with_label(label, section)) for p in rag.split_by_length(section, max_chars, overlap)]
+    elif cfg["strategy"] == "token":
+        for section in rag.split_by_heading(text):
+            label = rag.section_label(title, section)
+            triples += [(label, p, None) for p in split_by_tokens(section, max_chars, overlap)]
     elif cfg["strategy"] == "length":
         triples = [(title, p, None) for p in rag.split_by_length(text, max_chars, overlap)]
     elif cfg["strategy"] == "paragraph":
@@ -159,8 +219,9 @@ _embed_cache = {}
 
 def embed_cached(texts):
     missing = [t for t in dict.fromkeys(texts) if t not in _embed_cache]
-    if missing:
-        _embed_cache.update(zip(missing, rag.embed(missing)))
+    for start in range(0, len(missing), EMBED_BATCH):
+        batch = missing[start:start + EMBED_BATCH]
+        _embed_cache.update(zip(batch, rag.embed(batch)))
     vectors = np.array([_embed_cache[t] for t in texts], dtype=np.float32)
     return vectors / np.linalg.norm(vectors, axis=1, keepdims=True)  # 正規化後內積 = cosine 相似度
 
@@ -172,11 +233,72 @@ def build_config_index(cfg, docs):
     return chunks, embed_cached([c["text"] for c in chunks])
 
 
-def retrieve(cfg, chunks, similarity):
+# ---------- 關鍵字檢索（BM25），給混合檢索用 ----------
+BM25_K1, BM25_B = 1.2, 0.75  # BM25 的標準參數：k1 控制詞頻的影響上限，b 控制段落長度的懲罰
+RRF_K = 60                   # 合併兩種排名時的常數（Reciprocal Rank Fusion 論文的預設值）
+
+
+def keyword_terms(text):
+    """把文字切成關鍵字。用 bge-m3 的 tokenizer，中英文都能切；去掉純標點，英文轉小寫。"""
+    global _tokenizer
+    if _tokenizer is None:
+        from tokenizers import Tokenizer
+        _tokenizer = Tokenizer.from_pretrained(TOKENIZER_NAME)
+    terms = (t.lstrip("▁") for t in _tokenizer.encode(text.lower(), add_special_tokens=False).tokens)
+    return [t for t in terms if t and any(ch.isalnum() for ch in t)]
+
+
+_bm25_cache = {}  # id(段落清單) → 索引，同一份段落清單只建一次
+
+
+def bm25_scores(chunks, question):
+    """回傳問題對每一段的 BM25 分數（numpy 陣列）。"""
+    key = id(chunks)
+    if key not in _bm25_cache:
+        postings, lengths = {}, []  # postings：關鍵字 → [(段落編號, 出現次數), ...]
+        for j, c in enumerate(chunks):
+            terms = keyword_terms(c["text"])
+            lengths.append(len(terms))
+            counts = {}
+            for t in terms:
+                counts[t] = counts.get(t, 0) + 1
+            for t, tf in counts.items():
+                postings.setdefault(t, []).append((j, tf))
+        _bm25_cache[key] = (chunks, postings, np.array(lengths, dtype=np.float32))
+    _, postings, lengths = _bm25_cache[key]
+
+    n, avg_len = len(lengths), lengths.mean()
+    scores = np.zeros(n, dtype=np.float32)
+    for t in set(keyword_terms(question)):
+        if t not in postings:
+            continue
+        idf = np.log(1 + (n - len(postings[t]) + 0.5) / (len(postings[t]) + 0.5))
+        for j, tf in postings[t]:
+            scores[j] += idf * tf * (BM25_K1 + 1) / (tf + BM25_K1 * (1 - BM25_B + BM25_B * lengths[j] / avg_len))
+    return scores
+
+
+def rrf(*score_lists):
+    """Reciprocal Rank Fusion：每種檢索各自排名，分數 = Σ 1 / (RRF_K + 名次)。只看名次，不用管兩種分數的尺度不同。"""
+    fused = np.zeros(len(score_lists[0]), dtype=np.float32)
+    for scores in score_lists:
+        ranks = np.empty(len(scores), dtype=np.int64)
+        ranks[np.argsort(-scores)] = np.arange(1, len(scores) + 1)
+        fused += 1 / (RRF_K + ranks)
+    return fused
+
+
+def retrieve(cfg, chunks, similarity, question=None):
     """similarity 是問題和每一段的相似度。依相似度由高到低取 top_k 段；
+    hybrid 模式改用「向量 + BM25 關鍵字」兩種排名合併後的順序（需要傳入 question）；
     parent 模式改成取段落所屬的章節，重複的章節跳過。"""
+    order_by = similarity
+    if cfg.get("hybrid"):
+        if question is None:
+            raise ValueError("hybrid 模式需要傳入 question")
+        order_by = rrf(similarity, bm25_scores(chunks, question))
     hits, seen = [], set()
-    for j in np.argsort(-similarity):
+    for j in np.argsort(-order_by, kind="stable"):
         text = chunks[j]["parent"] if cfg.get("parent") else chunks[j]["text"]
         if text in seen:
             continue
@@ -187,19 +309,40 @@ def retrieve(cfg, chunks, similarity):
     return hits
 
 
+# ---------- 把問題翻成英文（query rewriting） ----------
+_translation_cache = {}
+
+
+def translate_to_english(question):
+    """用回答問題的同一個 LLM 把問題翻成英文。temperature 0 + 固定 seed，每次翻譯結果相同。"""
+    if question not in _translation_cache:
+        resp = rag.ollama.chat(
+            model=rag.LLM_MODEL,
+            messages=[{"role": "user", "content": TRANSLATE_PROMPT.format(question=question)}],
+            options={"temperature": 0, "seed": rag.SEED},
+        )
+        _translation_cache[question] = resp["message"]["content"].strip()
+    return _translation_cache[question]
+
+
 # ---------- 跑一組設定 ----------
-def run_config(cfg, docs, question_vecs, use_llm):
+def run_config(cfg, docs, tests, trap_start, question_vecs, use_llm):
     chunks, chunk_vecs = build_config_index(cfg, docs)
+    search_questions = [q for q, _ in tests]  # 檢索用的問題（可能翻成英文）；回答時一律用原本的問題
+    if cfg.get("query_en"):
+        search_questions = [translate_to_english(q) for q in search_questions]
+        if cfg["query_en"] == "all":
+            question_vecs = embed_cached(search_questions)
     similarity = question_vecs @ chunk_vecs.T  # [題數, 段數]
 
     retrieval_ok = answer_ok = context_chars = 0
     missed, wrong = [], []  # 檢索沒命中、回答錯誤的題號
-    for i, (question, keywords) in enumerate(TESTS):
-        is_trap = i >= TRAP_START
+    for i, (question, keywords) in enumerate(tests):
+        is_trap = i >= trap_start
         if is_trap and not use_llm:
             continue
 
-        hits = retrieve(cfg, chunks, similarity[i])
+        hits = retrieve(cfg, chunks, similarity[i], search_questions[i])
 
         if not is_trap:
             context_chars += sum(len(h["text"]) for h in hits)
@@ -220,9 +363,9 @@ def run_config(cfg, docs, question_vecs, use_llm):
         "chunks": len(chunks),
         "avg_len": round(sum(lengths) / len(lengths)),
         "max_len": max(lengths),
-        "retrieval": f"{retrieval_ok}/{TRAP_START}",
-        "answer": f"{answer_ok}/{len(TESTS)}" if use_llm else "-",
-        "avg_context": round(context_chars / TRAP_START),
+        "retrieval": f"{retrieval_ok}/{trap_start}",
+        "answer": f"{answer_ok}/{len(tests)}" if use_llm else "-",
+        "avg_context": round(context_chars / trap_start),
         "missed": " ".join(map(str, missed)) or "-",
         "wrong": (" ".join(map(str, wrong)) or "-") if use_llm else "",
     }
@@ -249,6 +392,7 @@ def main():
     parser.add_argument("--llm", action="store_true", help="也讓 LLM 回答並評分（很慢）")
     parser.add_argument("--only", help="只跑指定的設定名稱，用逗號分隔，例如 baseline,parent-100")
     parser.add_argument("--data", default=str(rag.DATA_DIR), help="知識文件的資料夾（預設 data）")
+    parser.add_argument("--tests", default="evaluate", help="測試題所在的模組，要有 TESTS 和 TRAP_START（預設 evaluate）")
     args = parser.parse_args()
 
     configs = CONFIGS
@@ -259,15 +403,18 @@ def main():
             parser.error(f"找不到這些設定：{', '.join(sorted(unknown))}")
         configs = [c for c in CONFIGS if c["name"] in names]
 
+    tests_module = importlib.import_module(args.tests)
+    tests, trap_start = tests_module.TESTS, tests_module.TRAP_START
+
     docs = rag.load_documents(args.data)
-    print(f"文件：{args.data}（{len(docs)} 份）")
-    question_vecs = embed_cached([q for q, _ in TESTS])
+    print(f"文件：{args.data}（{len(docs)} 份）　測試題：{args.tests}（{len(tests)} 題）")
+    question_vecs = embed_cached([q for q, _ in tests])
 
     rows = []
     for cfg in configs:
         start = time.time()
         print(f"▶ {cfg['name']} …", end="", flush=True)
-        rows.append(run_config(cfg, docs, question_vecs, args.llm))
+        rows.append(run_config(cfg, docs, tests, trap_start, question_vecs, args.llm))
         print(f" {time.time() - start:.1f}s")
 
     print()
@@ -285,6 +432,15 @@ def main():
         for cfg, row in zip(configs, rows):
             writer.writerow({**cfg, **row})
     print(f"\n結果已存到 {out.relative_to(rag.BASE_DIR)}")
+
+    if _translation_cache:  # 有設定把問題翻成英文時，另存一份翻譯結果，方便檢查翻得對不對
+        out_tr = out.with_name(out.stem + "_translations.csv")
+        with open(out_tr, "w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.writer(f)
+            writer.writerow(["題號", "原本的問題", "英文翻譯"])
+            for i, (question, _) in enumerate(tests):
+                writer.writerow([i + 1, question, _translation_cache.get(question, "")])
+        print(f"翻譯結果已存到 {out_tr.relative_to(rag.BASE_DIR)}")
 
 
 if __name__ == "__main__":

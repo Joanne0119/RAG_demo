@@ -5,3 +5,7 @@ __pycache__/
 
 # 向量資料庫（可用 python ingest.py 重建）
 chroma_db/
+
+# 真實說明書 PDF（有版權，用 python download_manuals.py 下載）
+data_car/
+data_rp2040/

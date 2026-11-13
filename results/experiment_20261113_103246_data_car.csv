@@ -1,0 +1,6 @@
+﻿name,strategy,max_chars,overlap,add_title,top_k,chunks,avg_len,max_len,retrieval,answer,avg_context,missed,wrong
+token-32,token,32,8,True,3,3203,69,243,28/32,-,208,17 22 28 32,
+token-64,token,64,16,True,3,1602,119,401,30/32,-,365,17 28,
+token-128,token,128,32,True,3,801,219,696,26/32,-,637,4 14 16 17 25 28,
+token-256,token,256,64,True,3,401,418,1294,27/32,-,1198,4 6 16 21 25,
+token-512,token,512,128,True,3,200,815,2209,23/32,-,2420,3 4 6 14 21 22 24 25 26,

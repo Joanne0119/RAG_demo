@@ -1,0 +1,18 @@
+﻿name,strategy,max_chars,overlap,add_title,top_k,chunks,avg_len,max_len,retrieval,answer,avg_context,missed,wrong,parent
+baseline,heading,600,100,True,3,166,622,623,28/32,-,1869,3 13 20 27,,
+heading-300,heading,300,50,True,3,332,323,323,24/32,-,969,3 4 13 19 21 23 31 32,,
+heading-200,heading,200,50,True,3,553,223,223,22/32,-,669,1 4 13 19 22 23 24 25 26 32,,
+heading-100,heading,100,30,True,3,1185,123,123,21/32,-,369,1 11 13 16 19 21 22 23 25 26 32,,
+heading-200-ov0,heading,200,0,True,3,415,223,223,21/32,-,669,4 11 12 13 19 21 22 23 24 25 32,,
+no-title,heading,600,100,False,3,166,599,600,29/32,-,1800,3 13 32,,
+length-400,length,400,100,True,3,277,422,423,24/32,-,1269,3 13 16 19 23 24 26 32,,
+length-200,length,200,50,True,3,553,223,223,22/32,-,669,1 4 13 19 22 23 24 25 26 32,,
+paragraph-300,paragraph,300,50,True,3,349,303,323,25/32,-,948,3 13 19 23 26 31 32,,
+baseline-k1,heading,600,100,True,1,166,622,623,25/32,-,623,3 13 16 19 20 27 32,,
+heading-200-k5,heading,200,50,True,5,553,223,223,24/32,-,1115,1 4 13 19 23 25 26 32,,
+recursive-300,recursive,300,50,True,3,350,276,322,24/32,-,859,3 11 13 19 21 23 24 26,,
+recursive-200,recursive,200,50,True,3,595,178,223,21/32,-,540,11 13 16 19 21 22 23 24 25 26 32,,
+recursive-100,recursive,100,30,True,3,1247,102,123,19/32,-,320,5 6 11 13 16 19 20 21 22 23 25 26 32,,
+parent-100,heading,100,30,True,3,1185,123,123,32/32,-,82955,-,,True
+parent-200,heading,200,50,True,3,553,223,223,32/32,-,82955,-,,True
+parent-100-k2,heading,100,30,True,2,1185,123,123,32/32,-,82955,-,,True

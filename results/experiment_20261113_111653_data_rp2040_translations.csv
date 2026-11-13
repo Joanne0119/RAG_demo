@@ -1,0 +1,37 @@
+﻿題號,原本的問題,英文翻譯
+1,RP2040 的處理器最高時脈是多少？,What is the highest clock speed of the RP2040 processor?
+2,RP2040 內建多少 SRAM？,How much SRAM does the RP2040 have?
+3,RP2040 最多支援多大的外部 Flash？,What is the maximum external Flash supported by RP2040?
+4,RP2040 有幾個 GPIO 腳位？,How many GPIO pins does RP2040 have?
+5,RP2040 的 ADC 是幾位元、取樣率多少？,How many bits is the ADC of RP2040 and what is the sampling rate?
+6,內建穩壓器開機時預設輸出多少電壓？,What is the default output voltage of the built-in stabilizer when开机?
+7,內建穩壓器最多可以提供多少電流？,What is the maximum current that the built-in stabilizer can provide?
+8,USB bootloader 需要多少 MHz 的晶振？,How many MHz crystal oscillator is needed for USB bootloader?
+9,溫度感測器在 27 度時的 Vbe 電壓是多少？,What is the Vbe voltage when the temperature sensor is 27 degrees?
+10,ADC 暫存器的基底位址是多少？,What is the base address of the ADC register?
+11,晶體振盪器（XOSC）支援的晶振頻率範圍是多少？,What is the frequency range supported by the Crystal Oscillator (XOSC)?
+12,RP2040 迴焊的峰值溫度是多少？,What is the peak temperature for the RP2040 reflow?
+13,RP2040 是什麼封裝？,What kind of package is RP2040?
+14,RP2040 建議的儲存溫度和濕度是多少？,What are the recommended storage temperature and humidity for RP2040?
+15,USB 的 DP、DM 腳位需要串聯多少歐姆的電阻？,"How many ohms of resistance are needed in series for the DP, DM pins of USB?"
+16,焊接時錫會在幾度開始融化（液相溫度）？,What is the temperature at which solder starts to melt (liquid phase temperature) during welding?
+17,如果 IO 用 1.8V 供電，ADC 輸入腳最高可以接多少電壓？,What is the maximum voltage that the ADC input pin can be connected to when the IO is supplied with 1.8V?
+18,要讓晶片暫停所有時脈、最省電的模式叫什麼？,What is the name of the sleep mode that pauses all clocks and consumes the least power for the chip?
+19,從省電模式醒來時，用環形振盪器大約要多久才能恢復？,How long does it take for the ring oscillator to recover approximately when waking up from low-power mode?
+20,打開內建溫度感測器會多耗多少電流？,How much more current will be consumed by opening the built-in temperature sensor?
+21,GPIO 內建的上拉電阻大約多少？,What is the built-in pull-up resistance of the GPIO approximately?
+22,VREG 的 VSEL 設成 1111 時輸出多少電壓？,What output voltage is achieved when VREG's VSEL is set to 1111?
+23,掉電偵測（BOD）預設的門檻電壓是多少？,What is the default threshold voltage for the Battery Off Detection (BOD) setting?
+24,USB_VDD 的最低電壓規格是多少？,What is the minimum voltage specification for USB_VDD?
+25,穩壓器輸出設 1.1V 時，ROK 狀態在多少電壓以上才會變成 1？,What is the voltage above which ROK state changes to 1 when the output of the stabilizer is 1.1V?
+26,DORMANT 模式下 DVDD 的典型電流是多少？,What is the typical current of DVDD in DORMANT mode?
+27,ADC 的有效位元數（ENOB）典型值是多少？,What is the typical value of the Effective Number of Bits (ENOB) for ADC?
+28,晶體振盪器（XOSC）暫存器的基底位址是多少？,What is the base address of the register for the Crystal Oscillator (XOSC) register?
+29,VREG_AND_CHIP_RESET 暫存器的基底位址是多少？,What is the base address of the VREG_AND_CHIP_RESET register?
+30,ADC 供電低於多少電壓時效能會變差？,What is the lower voltage at which the效能of ADC becomes worse?
+31,想把系統時脈跑到 200MHz，核心電壓要設多少？,What core voltage should be set to run the system clock to 200MHz?
+32,用 DMA 把 ADC 結果搬到 byte 陣列，FIFO 要設定哪兩個位元？,Which two settings are required for the FIFO to move ADC results using DMA into a byte array?
+33,RP2040 一顆多少錢？,How much does one RP2040 cost?
+34,RP2040 有內建藍牙嗎？是哪個版本？,Does the RP2040 have built-in Bluetooth? Which version is it?
+35,RP2040 的平均故障間隔（MTBF）是多少小時？,What is the Mean Time Between Failures (MTBF) of RP2040 in hours?
+36,RP2040 的保固期是多久？,How long is the warranty period for RP2040?
