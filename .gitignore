@@ -9,3 +9,6 @@ chroma_db/
 # 真實說明書 PDF（有版權，用 python download_manuals.py 下載）
 data_car/
 data_rp2040/
+
+# Contextual Retrieval 產生的上下文（從有版權的文件衍生，用 experiment.py 重新產生）
+cache/

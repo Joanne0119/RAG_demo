@@ -1,0 +1,2 @@
+﻿name,strategy,max_chars,overlap,add_title,top_k,context,chunks,avg_len,max_len,retrieval,answer,avg_context,missed,wrong
+context-200,heading,200,50,True,3,True,553,333,482,22/32,-,997,4 13 19 21 22 24 25 26 28 32,

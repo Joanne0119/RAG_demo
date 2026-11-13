@@ -16,7 +16,9 @@
 """
 import argparse
 import csv
+import hashlib
 import importlib
+import json
 import re
 import time
 from pathlib import Path
@@ -38,6 +40,8 @@ from evaluate import contains_all
 #   token     和 heading 一樣先依章節切，但長度用 token 算：max_chars、overlap 在這裡代表「幾個 token」
 #             token 用 embedding 模型 bge-m3 自己的 tokenizer 計算（中文約 1.5 字 = 1 token，英文約 3.4 字元）
 # add_title：段首要不要加上「【文件標題｜章節標題】」
+# context：Contextual Retrieval。用 LLM 看這段和它前面的內容，寫一句「這段在講什麼」放在段首。
+#          檢索是否命中只看原本的段落內容（LLM 寫的句子可能剛好含有答案，不能算進去）
 # hybrid：混合檢索。向量檢索和 BM25 關鍵字檢索各排一次名，再用 RRF 合併（型號、專有名詞比較找得到）
 # query_en：先用 LLM 把問題翻成英文再檢索（給英文文件用；回答時仍用原本的中文問題）
 #   "keyword" 只有 BM25 用英文問題，向量檢索仍用原本的問題
@@ -88,7 +92,21 @@ CONFIGS = [
     {"name": "table-200",       "strategy": "table",     "max_chars": 200, "overlap": 50,  "add_title": True,  "top_k": 3},
     {"name": "table-300",       "strategy": "table",     "max_chars": 300, "overlap": 50,  "add_title": True,  "top_k": 3},
     {"name": "table-600",       "strategy": "table",     "max_chars": 600, "overlap": 100, "add_title": True,  "top_k": 3},
+    # Contextual Retrieval：用 LLM 幫每段寫一句上下文放在段首（很慢：每段都要呼叫一次 LLM）
+    {"name": "context-100",     "strategy": "heading",   "max_chars": 100, "overlap": 30,  "add_title": True,  "top_k": 3, "context": True},
+    {"name": "context-200",     "strategy": "heading",   "max_chars": 200, "overlap": 50,  "add_title": True,  "top_k": 3, "context": True},
 ]
+# Contextual Retrieval 的設定
+CONTEXT_WINDOW = 1500  # 給 LLM 看這段前面多少字（3B 模型讀不了整份文件，只給附近的內容）
+CONTEXT_PROMPT = """<document_excerpt>
+{before}
+</document_excerpt>
+Here is the chunk that comes right after the excerpt above:
+<chunk>
+{chunk}
+</chunk>
+Write one short sentence that situates this chunk within the document, naming the component, module, register or section it describes, to improve search retrieval. Answer only with the sentence."""
+CONTEXT_CACHE_DIR = rag.BASE_DIR / "cache"  # LLM 產生的上下文存在這裡，重跑時不用重新產生（.gitignore 已排除）
 TRANSLATE_PROMPT = """Translate the following question into English for searching a technical document.
 Keep part numbers, register names, units and numbers unchanged. Output only the English question.
 
@@ -295,11 +313,62 @@ def make_chunks(doc, cfg):
     if cfg.get("parent") and cfg["strategy"] != "heading":
         raise ValueError("parent 只支援 strategy='heading'")
 
-    chunks = []
-    for label, piece, section in triples:
+    chunks, search_from = [], 0
+    for n, (label, piece, section) in enumerate(triples):
         chunk_text = with_label(label, piece)
-        chunks.append({"text": chunk_text, "source": doc["source"], "parent": section or chunk_text})
+        chunk = {"text": chunk_text, "source": doc["source"], "parent": section or chunk_text}
+        if cfg.get("context"):
+            # 找出這段在原文的位置（段落依序排列，從上一段之後找起），取它前面 CONTEXT_WINDOW 字給 LLM 看
+            pos = text.find(piece, search_from)
+            pos = pos if pos != -1 else max(text.find(piece), 0)
+            search_from = pos + 1
+            sentence = situate_chunk(doc["source"], text[max(0, pos - CONTEXT_WINDOW):pos], piece, n + 1, len(triples))
+            chunk["text"] = with_label(label, f"{sentence}\n{piece}")
+            chunk["parent"] = section or chunk["text"]
+            chunk["eval_text"] = chunk_text  # 評分只看原本的內容
+        chunks.append(chunk)
+    save_context_cache()
     return chunks
+
+
+# ---------- Contextual Retrieval：用 LLM 幫每段寫一句上下文 ----------
+_context_cache, _context_dirty = {}, 0
+
+
+def _context_cache_path(source):
+    return CONTEXT_CACHE_DIR / f"context_{Path(source).stem}.json"
+
+
+def save_context_cache():
+    global _context_dirty
+    if not _context_dirty:
+        return
+    CONTEXT_CACHE_DIR.mkdir(exist_ok=True)
+    for source, entries in _context_cache.items():
+        _context_cache_path(source).write_text(json.dumps(entries, ensure_ascii=False, indent=0), encoding="utf-8")
+    _context_dirty = 0
+
+
+def situate_chunk(source, before, piece, n, total):
+    """回傳 LLM 為這段寫的一句上下文。結果存到 cache/，同樣的內容不會再問一次；每 20 段存檔一次，中途停掉也能接著跑。"""
+    global _context_dirty
+    if source not in _context_cache:
+        path = _context_cache_path(source)
+        _context_cache[source] = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    entries = _context_cache[source]
+    key = hashlib.sha1(f"{CONTEXT_PROMPT}\0{before}\0{piece}".encode("utf-8")).hexdigest()
+    if key not in entries:
+        resp = rag.ollama.chat(
+            model=rag.LLM_MODEL,
+            messages=[{"role": "user", "content": CONTEXT_PROMPT.format(before=before, chunk=piece)}],
+            options={"temperature": 0, "seed": rag.SEED, "num_predict": 80},
+        )
+        entries[key] = " ".join(resp["message"]["content"].split())  # 壓成一行
+        _context_dirty += 1
+        if _context_dirty >= 20:
+            save_context_cache()
+            print(f"\n  上下文 {n}/{total}：{entries[key][:80]}", end="", flush=True)
+    return entries[key]
 
 
 # ---------- 向量化（加快取：同樣的文字只算一次） ----------
@@ -392,7 +461,10 @@ def retrieve(cfg, chunks, similarity, question=None):
         if text in seen:
             continue
         seen.add(text)
-        hits.append({"text": text, "source": chunks[j]["source"], "distance": 1 - float(similarity[j])})
+        hit = {"text": text, "source": chunks[j]["source"], "distance": 1 - float(similarity[j])}
+        if "eval_text" in chunks[j] and not cfg.get("parent"):
+            hit["eval_text"] = chunks[j]["eval_text"]
+        hits.append(hit)
         if len(hits) == cfg["top_k"]:
             break
     return hits
@@ -435,7 +507,7 @@ def run_config(cfg, docs, tests, trap_start, question_vecs, use_llm):
 
         if not is_trap:
             context_chars += sum(len(h["text"]) for h in hits)
-            if contains_all("".join(h["text"] for h in hits), keywords):
+            if contains_all("".join(h.get("eval_text", h["text"]) for h in hits), keywords):  # context 設定只看原本的內容
                 retrieval_ok += 1
             else:
                 missed.append(i + 1)
