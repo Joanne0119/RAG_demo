@@ -1,0 +1,5 @@
+﻿name,strategy,max_chars,overlap,add_title,top_k,chunks,avg_len,max_len,retrieval,answer,avg_context,missed,wrong
+baseline,heading,600,100,True,3,240,637,663,24/32,-,1913,4 14 16 17 24 25 28 29,
+heading-300,heading,300,50,True,3,479,338,363,24/32,-,1011,4 14 17 20 22 25 28 29,
+heading-200,heading,200,50,True,3,798,238,263,25/32,-,710,4 6 16 17 22 25 28,
+heading-100,heading,100,30,True,3,1709,139,163,26/32,-,407,4 17 18 24 25 28,

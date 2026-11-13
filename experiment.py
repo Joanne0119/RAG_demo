@@ -15,6 +15,7 @@
 結果會印成表格，並存一份 CSV 到 results 資料夾。
 """
 import argparse
+import bisect
 import csv
 import hashlib
 import importlib
@@ -169,41 +170,94 @@ def split_recursive(text, max_chars, overlap, separators=RECURSIVE_SEPARATORS):
     return [c.strip() for c in chunks if c.strip()]
 
 
-# ---------- 讀 PDF 時辨識表格（--tables） ----------
-def pdf_text_with_tables(path):
-    """逐頁讀 PDF：pymupdf 找到的表格轉成 Markdown 表格，其他文字照舊。
+# ---------- 讀 PDF：辨識表格（--tables）、標出每段所屬的章節（--sections） ----------
+def page_text_with_tables(page):
+    """讀一頁：pymupdf 找到的表格轉成 Markdown 表格，其他文字照舊。
     純文字版的表格會變成「一行一個欄位」，表頭和數值分開；轉成 Markdown 後每一列都是完整的一行。
     文字區塊維持 PDF 原本的閱讀順序（不能依座標重排，兩欄排版的頁面左右欄會交錯），
     表格放在它的第一個文字區塊原本的位置。"""
     import pymupdf
 
-    pages = []
-    with pymupdf.open(path) as pdf:
-        for page in pdf:
-            tables = page.find_tables().tables
-            boxes = [pymupdf.Rect(t.bbox) for t in tables]
-            markdowns = [t.to_markdown().replace("<br>", " ").replace("**", "").strip() for t in tables]  # 儲存格內換行改成空白
-            parts, placed = [], set()
-            for x0, y0, x1, y1, text, *_ in page.get_text("blocks"):
-                center = pymupdf.Point((x0 + x1) / 2, (y0 + y1) / 2)
-                inside = next((k for k, box in enumerate(boxes) if center in box), None)
-                if inside is None:
-                    parts.append(text.strip())
-                elif inside not in placed:  # 表格裡的文字改由 Markdown 表格提供，只在第一次遇到時放一次
-                    parts.append(f"\n{markdowns[inside]}\n")
-                    placed.add(inside)
-            parts += [f"\n{md}\n" for k, md in enumerate(markdowns) if k not in placed]  # 沒有文字區塊落在裡面的表格
-            pages.append("\n".join(p for p in parts if p))
-    return "\n".join(pages)
+    tables = page.find_tables().tables
+    boxes = [pymupdf.Rect(t.bbox) for t in tables]
+    markdowns = [t.to_markdown().replace("<br>", " ").replace("**", "").strip() for t in tables]  # 儲存格內換行改成空白
+    parts, placed = [], set()
+    for x0, y0, x1, y1, text, *_ in page.get_text("blocks"):
+        center = pymupdf.Point((x0 + x1) / 2, (y0 + y1) / 2)
+        inside = next((k for k, box in enumerate(boxes) if center in box), None)
+        if inside is None:
+            parts.append(text.strip())
+        elif inside not in placed:  # 表格裡的文字改由 Markdown 表格提供，只在第一次遇到時放一次
+            parts.append(f"\n{markdowns[inside]}\n")
+            placed.add(inside)
+    parts += [f"\n{md}\n" for k, md in enumerate(markdowns) if k not in placed]  # 沒有文字區塊落在裡面的表格
+    return "\n".join(p for p in parts if p)
 
 
-def load_documents_with_tables(data_dir):
-    """和 rag.load_documents 一樣，但 PDF 改用 pdf_text_with_tables 讀取。"""
+NUMBERED_HEADING = re.compile(r"^(\d+(?:\.\d+)+)\.\s+\S")  # 「2.10.4. Brown-out Detection」這種帶編號的標題
+RUNNING_HEADER_REPEAT = 3  # 出現這麼多次以上的標題行是頁首，只有第一次算數
+
+
+def breadcrumb(line):
+    """車主手冊每頁頁首的麵包屑「uu 安全帶u 關於安全帶」→「安全帶 > 關於安全帶」（u 是箭頭符號轉成文字後的樣子）。"""
+    parts = [x.strip(" *") for x in re.split(r"u(?=[^a-z]|$)", line.strip()[2:])]
+    return " > ".join(x for x in parts if x)
+
+
+def section_marks(pages):
+    """找出每個章節從原文的哪個位置開始，回傳 [(位置, 章節路徑), ...]（依位置排序）。兩種規則：
+    1. 帶編號的標題（RP2040）：依編號層級組成路徑，例如「2.10. Core Supply Regulator > 2.10.4. Brown-out Detection」
+    2. 頁首的麵包屑（車主手冊）：整頁套用「章名｜麵包屑」。新主題的第一頁沒有麵包屑，改用下一頁的。
+    這些規則是看過這兩份 PDF 後寫的，換一份文件可能要改。"""
+    lines_per_page = [p.split("\n") for p in pages]
+    counts = {}
+    for lines in lines_per_page:
+        for l in lines:
+            counts[l.strip()] = counts.get(l.strip(), 0) + 1
+    crumbs = [next((breadcrumb(l) for l in lines if l.strip().startswith("uu")), None) for lines in lines_per_page]
+
+    marks, stack, seen, offset = [], [], set(), 0
+    for n, lines in enumerate(lines_per_page):
+        crumb = crumbs[n] or next((c for c in crumbs[n + 1:n + 2] if c), None)
+        if crumb:
+            chapter = next((l.strip() for l in lines if l.strip()), "")
+            chapter = chapter if len(chapter) <= 8 and not chapter.isdigit() else ""
+            marks.append((offset, "｜".join(x for x in (chapter, crumb) if x)))
+        pos = offset
+        for l in lines:
+            m = NUMBERED_HEADING.match(l.strip())
+            title = l.strip()
+            if m and len(title) < 80 and not (counts[title] >= RUNNING_HEADER_REPEAT and title in seen):
+                seen.add(title)
+                depth = m.group(1).count(".") + 1
+                stack = [h for h in stack if h[0] < depth] + [(depth, title)]
+                marks.append((pos, " > ".join(t for _, t in stack)))
+            pos += len(l) + 1
+        offset += len(pages[n]) + 1  # 頁和頁之間用 "\n" 接起來
+    return marks
+
+
+def load_documents_for_experiment(data_dir, tables=False, sections=False):
+    """和 rag.load_documents 一樣，但 PDF 可以辨識表格（tables），也可以標出每段所屬的章節（sections，存在 doc["sections"]）。"""
+    import pymupdf
+
     docs = rag.load_documents(data_dir)
     for doc in docs:
-        if doc["source"].lower().endswith(".pdf"):
-            doc["text"] = pdf_text_with_tables(Path(data_dir) / doc["source"])
+        if not doc["source"].lower().endswith(".pdf") or not (tables or sections):
+            continue
+        with pymupdf.open(Path(data_dir) / doc["source"]) as pdf:
+            pages = [page_text_with_tables(page) if tables else page.get_text() for page in pdf]
+        doc["text"] = "\n".join(pages)
+        if sections:
+            doc["sections"] = section_marks(pages)
     return docs
+
+
+def section_at(doc, pos):
+    """原文位置 pos 所屬的章節路徑，找不到回傳 None。"""
+    marks = doc.get("sections") or []
+    i = bisect.bisect_right([m[0] for m in marks], pos) - 1
+    return marks[i][1] if i >= 0 else None
 
 
 CAPTION_LINES = 3       # 表格標題最多取表格前幾行文字
@@ -316,12 +370,20 @@ def make_chunks(doc, cfg):
     chunks, search_from = [], 0
     for n, (label, piece, section) in enumerate(triples):
         chunk_text = with_label(label, piece)
-        chunk = {"text": chunk_text, "source": doc["source"], "parent": section or chunk_text}
-        if cfg.get("context"):
-            # 找出這段在原文的位置（段落依序排列，從上一段之後找起），取它前面 CONTEXT_WINDOW 字給 LLM 看
+        if cfg.get("context") or doc.get("sections"):
+            # 找出這段在原文的位置（段落依序排列，從上一段之後找起）。table 切法的段落開頭有另外加上的
+            # 表格標題和表頭，原文找不到整段，改找最後一行；都找不到就沿用上一段的位置
             pos = text.find(piece, search_from)
-            pos = pos if pos != -1 else max(text.find(piece), 0)
+            if pos == -1:
+                pos = text.find(piece.split("\n")[-1], search_from)
+            pos = pos if pos != -1 else max(search_from - 1, 0)
             search_from = pos + 1
+        if doc.get("sections"):  # --sections：段首標籤加上這段所屬的章節路徑
+            where = section_at(doc, pos)
+            label = f"{title}｜{where}" if where else label
+            chunk_text = with_label(label, piece)
+        chunk = {"text": chunk_text, "source": doc["source"], "parent": section or chunk_text}
+        if cfg.get("context"):  # 取這段前面 CONTEXT_WINDOW 字給 LLM 看
             sentence = situate_chunk(doc["source"], text[max(0, pos - CONTEXT_WINDOW):pos], piece, n + 1, len(triples))
             chunk["text"] = with_label(label, f"{sentence}\n{piece}")
             chunk["parent"] = section or chunk["text"]
@@ -555,6 +617,7 @@ def main():
     parser.add_argument("--data", default=str(rag.DATA_DIR), help="知識文件的資料夾（預設 data）")
     parser.add_argument("--tests", default="evaluate", help="測試題所在的模組，要有 TESTS 和 TRAP_START（預設 evaluate）")
     parser.add_argument("--tables", action="store_true", help="讀 PDF 時辨識表格，轉成 Markdown 表格（較慢）")
+    parser.add_argument("--sections", action="store_true", help="PDF 的段首標籤加上段落所屬的章節路徑")
     args = parser.parse_args()
 
     configs = CONFIGS
@@ -568,7 +631,7 @@ def main():
     tests_module = importlib.import_module(args.tests)
     tests, trap_start = tests_module.TESTS, tests_module.TRAP_START
 
-    docs = load_documents_with_tables(args.data) if args.tables else rag.load_documents(args.data)
+    docs = load_documents_for_experiment(args.data, tables=args.tables, sections=args.sections)
     print(f"文件：{args.data}（{len(docs)} 份）　測試題：{args.tests}（{len(tests)} 題）")
     question_vecs = embed_cached([q for q, _ in tests])
 
@@ -587,6 +650,8 @@ def main():
     suffix = "" if data_name == rag.DATA_DIR.name else f"_{data_name}"  # 用其他資料夾時，檔名加上資料夾名稱
     if args.tables:
         suffix += "_tables"
+    if args.sections:
+        suffix += "_sections"
     out = RESULTS_DIR / f"experiment_{time.strftime('%Y%m%d_%H%M%S')}{suffix}.csv"
     with open(out, "w", newline="", encoding="utf-8-sig") as f:  # utf-8-sig：Excel 打開中文不會亂碼
         # 有些設定多了 parent 欄位，所以欄位名稱要取所有設定的聯集

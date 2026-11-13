@@ -1,0 +1,5 @@
+﻿name,strategy,max_chars,overlap,add_title,top_k,chunks,avg_len,max_len,retrieval,answer,avg_context,missed,wrong
+table-100,table,100,30,True,3,1233,203,632,21/32,-,581,5 11 13 16 20 21 23 24 25 26 32,
+table-200,table,200,50,True,3,709,273,632,23/32,-,813,1 13 16 21 23 24 25 26 32,
+table-300,table,300,50,True,3,454,334,632,25/32,-,1073,3 13 16 21 23 24 32,
+table-600,table,600,100,True,3,251,482,728,27/32,-,1811,3 13 21 23 24,
