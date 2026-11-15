@@ -18,6 +18,7 @@
 執行：python selfcontain.py
       python selfcontain.py --data data_car,data_rp2040 --sizes 32,64,128,256
       python selfcontain.py --answers --data data_car     只量「含有答案的段落」（見 main_answers）
+      python selfcontain.py --auto --data data_car        不用測試題，改用 LLM 自動出題（見 main_auto）
 結果印成表格，逐段的主題和排名存到 results/selfcontain_*.csv（方便人工抽查）。
 """
 import argparse
@@ -25,6 +26,7 @@ import csv
 import hashlib
 import json
 import random
+import re
 import time
 
 import numpy as np
@@ -80,9 +82,12 @@ def main():
     parser.add_argument("--data", default="data_car,data_rp2040,data,data_plain", help="文件資料夾，用逗號分隔")
     parser.add_argument("--sizes", default="32,64,128,256", help="段落長度（token），用逗號分隔")
     parser.add_argument("--answers", action="store_true", help="只量含有測試題答案的段落")
+    parser.add_argument("--auto", action="store_true", help="用 LLM 自動出題，再量含有答案的段落")
     args = parser.parse_args()
     if args.answers:
         return main_answers(args)
+    if args.auto:
+        return main_auto(args)
     sizes = [int(s) for s in args.sizes.split(",")]
     tokenizer = Tokenizer.from_pretrained(exp.TOKENIZER_NAME)
     cache = json.loads(CACHE_PATH.read_text(encoding="utf-8")) if CACHE_PATH.exists() else {}
@@ -195,6 +200,115 @@ def main_answers(args):
 
     data_name = "_".join(args.data.split(","))
     out = exp.RESULTS_DIR / f"selfcontain_answers_{time.strftime('%Y%m%d_%H%M%S')}_{data_name}.csv"
+    with open(out, "w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.DictWriter(f, fieldnames=list(records[0]))
+        writer.writeheader()
+        writer.writerows(records)
+    print(f"逐段結果已存到 {out.relative_to(rag.BASE_DIR)}")
+
+
+# ---------- 不用測試題：LLM 自動出題 ----------
+AUTO_SAMPLE = 40       # 每份文件出幾題（挑到 40 個帶單位的數值為止，最多試 MAX_TRIES 個位置）
+MAX_TRIES = 400
+AUTO_WINDOW = 128      # 出題時給 LLM 看的長度（token）
+QUESTION_CACHE_PATH = rag.BASE_DIR / "cache" / "selfcontain_questions.json"
+# 一定要帶單位：沒有單位的數字在 PDF 裡多半是頁碼、章節編號、表格編號（「P. 112」「Table 631」），問不出有意義的問題
+VALUE_PATTERN = re.compile(
+    r"(?<![\w.])\d[\d,.]*[ ]?(?:"
+    r"(?:mV|V|mA|uA|µA|μA|A|W|mW|MHz|kHz|GHz|Hz|KB|kB|MB|Mbps|bits?|ns|us|µs|μs|ms|s|°C|kPa|psi|mm|cm|km/h|kg|L|Ω|ohm)(?![A-Za-z])"
+    r"|%|公升|公克|公斤|公里|公釐|分鐘|小時|秒|個月|年|元|伏特|瓦)")
+QUESTION_PROMPT = """以下是一份說明文件的節錄。節錄中的「{answer}」是某個問題的答案。
+請寫出使用者會問的那個問題：用繁體中文寫一句話，要讓人看得懂在問什麼東西（不要寫「這個」「上述」），不能包含答案本身。
+只輸出問題。
+
+節錄：
+{passage}
+
+問題："""
+
+
+def pick_answer(passage, rng):
+    """挑一個數值當答案（規格、設定值是說明書最常被問的，也是最容易「只剩數值、看不出在講什麼」的地方）。
+    只從節錄中間那一半挑，前後才有上下文。"""
+    lo, hi = len(passage) // 4, len(passage) * 3 // 4
+    values = [m for m in VALUE_PATTERN.finditer(passage) if lo <= m.start() < hi]
+    return rng.choice(values) if values else None
+
+
+def generate_question(passage, answer, cache):
+    key = hashlib.sha1((QUESTION_PROMPT + passage + answer).encode("utf-8")).hexdigest()
+    if key not in cache:
+        resp = ollama.chat(
+            model=rag.LLM_MODEL,
+            messages=[{"role": "user", "content": QUESTION_PROMPT.format(passage=passage, answer=answer)}],
+            options={"temperature": 0, "seed": rag.SEED, "num_predict": 60},
+        )
+        cache[key] = resp["message"]["content"].strip().split("\n")[0].strip()
+    return cache[key]
+
+
+def main_auto(args):
+    """和 main_answers 一樣量「上下文增益」，但不用人工測試題：
+    隨機挑文件中的位置，取那裡的 AUTO_WINDOW 個 token，從中間挑一個數值當答案，請 LLM 寫出「答案是這個數值」的問題。
+    （直接請 qwen2.5:3b 同時出題和答案時，常把答案寫進問題欄、答案留空，所以改成答案由程式挑。）
+    答案在原文的位置就是「含有答案的段落」所在；每種長度都取包含整個答案的第一段，量上下文增益。
+    出題只做一次，各種長度共用同一批問題，才能互相比較。"""
+    sizes = [int(s) for s in args.sizes.split(",")]
+    tokenizer = Tokenizer.from_pretrained(exp.TOKENIZER_NAME)
+    cache = json.loads(QUESTION_CACHE_PATH.read_text(encoding="utf-8")) if QUESTION_CACHE_PATH.exists() else {}
+
+    records = []
+    for data in args.data.split(","):
+        start = time.time()
+        docs = rag.load_documents(rag.BASE_DIR / data)
+        encoded = [(d["text"], tokenizer.encode(d["text"], add_special_tokens=False).offsets) for d in docs]
+        anchors = [(d, a) for d, (_, offsets) in enumerate(encoded) for a in range(0, max(1, len(offsets) - AUTO_WINDOW), 16)]
+        rng = random.Random(SEED)
+        qas = []  # (文件編號, 答案起點, 答案終點, 問題, 答案)
+        tried = 0
+        for d, a in rng.sample(anchors, min(MAX_TRIES, len(anchors))):
+            if len(qas) >= AUTO_SAMPLE:
+                break
+            tried += 1
+            text, offsets = encoded[d]
+            passage_start = offsets[a][0]
+            passage = text[passage_start:offsets[min(a + AUTO_WINDOW, len(offsets)) - 1][1]]
+            match = pick_answer(passage, rng)
+            if match is None:
+                continue
+            answer = match.group().strip()
+            question = generate_question(passage, answer, cache)
+            duplicate = any(q[0] == d and q[1] == passage_start + match.start() for q in qas)  # 相鄰位置可能挑到同一個數值
+            if question and not duplicate and answer.replace(" ", "") not in question.replace(" ", ""):  # 問題裡直接寫出答案就不用
+                qas.append((d, passage_start + match.start(), passage_start + match.start() + len(answer), question, answer))
+        QUESTION_CACHE_PATH.parent.mkdir(exist_ok=True)
+        QUESTION_CACHE_PATH.write_text(json.dumps(cache, ensure_ascii=False, indent=0), encoding="utf-8")
+        question_vecs = exp.embed_cached([qa[3] for qa in qas])
+        print(f"{data:12s} 出了 {len(qas)} 題可用（試了 {tried} 個位置，{time.time() - start:.0f}s）", flush=True)
+
+        for size in sizes:
+            chunk_texts, context_texts, used = [], [], []
+            for k, (d, ans_start, ans_end, question, answer) in enumerate(qas):
+                text, offsets = encoded[d]
+                for i, j in windows(text, offsets, size):
+                    if offsets[i][0] <= ans_start and ans_end <= offsets[j - 1][1]:
+                        chunk_texts.append(span(text, offsets, i, j))
+                        context_texts.append(span(text, offsets, max(0, i - CONTEXT_TOKENS), min(len(offsets), j + CONTEXT_TOKENS)))
+                        used.append(k)
+                        break
+            chunk_vecs, context_vecs = exp.embed_cached(chunk_texts), exp.embed_cached(context_texts)
+            gains = []
+            for n, k in enumerate(used):
+                gain = float(context_vecs[n] @ question_vecs[k] - chunk_vecs[n] @ question_vecs[k])
+                gains.append(gain)
+                records.append({"data": data, "size": size, "question": qas[k][3], "answer": qas[k][4],
+                                "context_gain": round(gain, 3), "chunk": chunk_texts[n]})
+            g = np.array(gains)
+            print(f"{data:12s} token-{size:<4d} {len(g):2d} 段　上下文增益 {g.mean():+.3f} ± {g.std(ddof=1) / len(g) ** 0.5:.3f}"
+                  f"　（正的 {int((g > 0).sum())}/{len(g)}）", flush=True)
+
+    data_name = "_".join(args.data.split(","))
+    out = exp.RESULTS_DIR / f"selfcontain_auto_{time.strftime('%Y%m%d_%H%M%S')}_{data_name}.csv"
     with open(out, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=list(records[0]))
         writer.writeheader()
