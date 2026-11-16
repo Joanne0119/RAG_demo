@@ -1,0 +1,17 @@
+﻿name,strategy,max_chars,overlap,add_title,top_k,chunks,avg_len,max_len,retrieval,answer,avg_context,missed,wrong,hybrid
+baseline,heading,600,100,True,3,117,628,628,27/32,-,1884,4 5 13 15 26,,
+heading-300,heading,300,50,True,3,235,327,328,28/32,-,984,4 5 19 32,,
+heading-200,heading,200,50,True,3,391,228,228,25/32,-,684,4 5 8 18 26 27 32,,
+heading-100,heading,100,30,True,3,837,128,128,24/32,-,384,4 17 24 26 27 30 31 32,,
+no-title,heading,600,100,False,3,117,600,600,26/32,-,1800,1 5 11 15 18 26,,
+recursive-200,recursive,200,50,True,3,397,204,228,30/32,-,619,26 27,,
+recursive-100,recursive,100,30,True,3,841,112,128,28/32,-,342,1 4 27 32,,
+token-32,token,32,8,True,3,1467,81,172,18/32,-,240,4 12 16 17 20 23 24 25 27 28 29 30 31 32,,
+token-64,token,64,16,True,3,734,134,299,25/32,-,392,1 4 12 17 26 27 31,,
+token-128,token,128,32,True,3,367,240,451,27/32,-,701,1 4 26 27 30,,
+token-256,token,256,64,True,3,184,452,910,26/32,-,1353,5 6 8 26 27 31,,
+token-512,token,512,128,True,3,92,872,1400,21/32,-,2669,1 5 6 11 12 13 23 26 27 31 32,,
+hybrid-100,heading,100,30,True,3,837,128,128,25/32,-,384,10 16 17 24 26 27 32,,True
+hybrid-200,heading,200,50,True,3,391,228,228,25/32,-,684,1 10 16 17 26 27 32,,True
+hybrid-300,heading,300,50,True,3,235,327,328,27/32,-,984,5 16 17 19 27,,True
+hybrid-600,heading,600,100,True,3,117,628,628,27/32,-,1884,5 16 17 26 27,,True
