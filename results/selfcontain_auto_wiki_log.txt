@@ -1,0 +1,6 @@
+data_wiki    出了 40 題可用（試了 219 個位置，162s）
+data_wiki    token-32   40 段　上下文增益 +0.040 ± 0.018　（正的 27/40）
+data_wiki    token-64   40 段　上下文增益 -0.001 ± 0.013　（正的 20/40）
+data_wiki    token-128  40 段　上下文增益 -0.019 ± 0.008　（正的 15/40）
+data_wiki    token-256  40 段　上下文增益 -0.023 ± 0.006　（正的 9/40）
+逐段結果已存到 results\selfcontain_auto_20261116_113309_data_wiki.csv

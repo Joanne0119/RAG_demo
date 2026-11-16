@@ -141,7 +141,7 @@ def main():
 
 
 # ---------- 只量「含有答案的段落」 ----------
-TESTS_OF = {"data": "evaluate", "data_plain": "evaluate", "data_car": "tests_car", "data_rp2040": "tests_rp2040", "data_law": "tests_law", "data_esp32": "tests_esp32"}
+TESTS_OF = {"data": "evaluate", "data_plain": "evaluate", "data_car": "tests_car", "data_rp2040": "tests_rp2040", "data_law": "tests_law", "data_esp32": "tests_esp32", "data_wiki": "tests_wiki"}
 MAX_ANSWER_CHUNKS = 3  # 關鍵字出現在超過這麼多段的題目（例如答案只是「80」）找不出哪段才是答案，略過
 
 
