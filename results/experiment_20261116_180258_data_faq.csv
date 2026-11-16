@@ -1,0 +1,17 @@
+﻿name,strategy,max_chars,overlap,add_title,top_k,chunks,avg_len,max_len,retrieval,answer,avg_context,missed,wrong,hybrid
+baseline,heading,600,100,True,3,131,271,674,32/32,-,871,-,,
+heading-200,heading,200,50,True,3,212,203,297,31/32,-,614,23,,
+heading-100,heading,100,30,True,3,418,137,197,30/32,-,397,31 32,,
+recursive-200,recursive,200,50,True,3,201,196,278,31/32,-,586,31,,
+token-32,token,32,8,True,3,914,88,150,27/32,-,244,12 23 27 31 32,,
+token-64,token,64,16,True,3,464,125,202,29/32,-,365,23 31 32,,
+token-128,token,128,32,True,3,248,184,302,30/32,-,539,23 31,,
+token-256,token,256,64,True,3,152,251,424,31/32,-,769,23,,
+token-512,token,512,128,True,3,130,275,756,32/32,-,897,-,,
+token-32-nt,token,32,8,False,3,914,40,71,15/32,-,122,2 9 10 11 12 14 16 17 22 23 24 25 27 28 30 31 32,,
+token-64-nt,token,64,16,False,3,464,77,111,26/32,-,238,9 24 25 27 30 32,,
+token-128-nt,token,128,32,False,3,248,137,207,30/32,-,425,21 23,,
+token-256-nt,token,256,64,False,3,152,204,366,30/32,-,660,21 23,,
+token-512-nt,token,512,128,False,3,130,228,682,31/32,-,793,21,,
+hybrid-200,heading,200,50,True,3,212,203,297,31/32,-,618,23,,True
+hybrid-600,heading,600,100,True,3,131,271,674,32/32,-,877,-,,True
