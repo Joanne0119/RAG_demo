@@ -1,0 +1,7 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+data_faq     出了 37 題可用（試了 400 個位置，3s）
+data_faq     token-32   37 段　上下文增益 -0.003 ± 0.010　（正的 17/37）
+data_faq     token-64   37 段　上下文增益 -0.016 ± 0.007　（正的 12/37）
+data_faq     token-128  37 段　上下文增益 -0.027 ± 0.007　（正的 10/37）
+data_faq     token-256  37 段　上下文增益 -0.017 ± 0.008　（正的 11/37）
+逐段結果已存到 results\selfcontain_auto_20261116_175420_data_faq_labels.csv

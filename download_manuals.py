@@ -7,11 +7,14 @@
   data_rp2040/  RP2040 Datasheet（英文，642 頁太大，只取部分章節，約 48 頁）
   data_esp32/   ESP32-C3 技術規格書（簡體中文，73 頁，全部使用）
   data_wiki/    維基百科「臺灣高速鐵路」條目（CC BY-SA 4.0，轉成 Markdown；可以放進 git，來源見 data_wiki/ATTRIBUTION）
+  data_faq/     退輔會「常見問答」123 題（政府網站資料開放宣告，註明出處即可利用；可以放進 git，來源見 data_faq/ATTRIBUTION）
   data_law/     勞動基準法全文（全國法規資料庫，存成純文字；法律條文不受著作權保護，可以放進 git）
 """
 import html
 import json
 import re
+import ssl
+import time
 import urllib.parse
 import urllib.request
 
@@ -101,11 +104,61 @@ def download_wiki():
     print(f"  存到 {WIKI['path'].relative_to(rag.BASE_DIR)}（版本 {revid}，{len(lines)} 行）")
 
 
+FAQ = {
+    "site": "https://www.vac.gov.tw/",
+    "path": rag.BASE_DIR / "data_faq" / "退輔會常見問答.md",
+    # 分類編號（網站沒有 08）
+    "categories": {"01": "就學服務", "02": "就業服務", "03": "職業訓練", "04": "就醫服務",
+                   "05": "就養服務", "06": "服務照顧", "07": "退除給付", "09": "申辦榮民證"},
+}
+
+
+def fetch_faq(page):
+    """政府網站的憑證缺少 Subject Key Identifier，新版 Python 的嚴格檢查會拒絕；
+    這裡只關掉這一條，憑證鏈與網域照樣驗證。"""
+    context = ssl.create_default_context()
+    context.verify_flags &= ~ssl.VERIFY_X509_STRICT
+    time.sleep(0.5)  # 一頁一頁慢慢抓，不要給網站壓力
+    request = urllib.request.Request(FAQ["site"] + page, headers={"User-Agent": "Mozilla/5.0"})
+    return urllib.request.urlopen(request, timeout=30, context=context).read().decode("utf-8")
+
+
+def download_faq():
+    """國軍退除役官兵輔導委員會「常見問答」：每一題存成「## 分類｜問題」加答案，問題就是細的章節標題。"""
+    lines = ["# 退輔會常見問答"]
+    for code, category in FAQ["categories"].items():
+        links = []
+        for number in range(1, 50):  # 分類列表每頁 20 題
+            found = [link for link in dict.fromkeys(re.findall(r"cp-1798-\d+-1\.html", fetch_faq(f"lp-1798-1-xCat-{code}-{number}-20.html")))
+                     if link not in links]
+            if not found:
+                break
+            links += found
+        for link in links:
+            page = fetch_faq(link)
+            question = html.unescape(re.search(r'<section class="cp"[^>]*><h1>(.*?)</h1>', page, re.S).group(1)).strip()
+            article = re.search(r"<article>(.*?)</article>", page, re.S).group(1)
+            article = re.sub(r'<ul class="info">.*?</ul>', "", article, flags=re.S)  # 發布日期、資料來源
+            article = re.sub(r"<br\s*/?>|</p>|</li>|</tr>|</h\d>", "\n", article)
+            answer = [" ".join(html.unescape(re.sub(r"<[^>]+>", " ", line)).split()) for line in article.splitlines()]
+            lines += ["", f"## {category}｜{question}"] + [line for line in answer if line]
+        print(f"  {category}：{len(links)} 題")
+    FAQ["path"].parent.mkdir(exist_ok=True)
+    FAQ["path"].write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (FAQ["path"].parent / "ATTRIBUTION").write_text(
+        f"資料來源：國軍退除役官兵輔導委員會全球資訊網「常見問答」（{FAQ['site']}lp-1798-1.html），"
+        f"{time.strftime('%Y-%m-%d')} 下載。依該網站「政府網站資料開放宣告」無償開放利用，使用時註明出處；本資料夾只把它轉成純文字。\n",
+        encoding="utf-8")
+    print(f"  存到 {FAQ['path'].relative_to(rag.BASE_DIR)}（{len(lines)} 行）")
+
+
 def main():
     print("下載 勞動基準法 …")
     download_law()
     print("下載 維基百科：臺灣高速鐵路 …")
     download_wiki()
+    print("下載 退輔會常見問答 …")
+    download_faq()
     for m in MANUALS:
         m["path"].parent.mkdir(exist_ok=True)
         print(f"下載 {m['path'].name} …")
