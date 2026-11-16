@@ -83,6 +83,7 @@ def main():
     parser.add_argument("--sizes", default="32,64,128,256", help="段落長度（token），用逗號分隔")
     parser.add_argument("--answers", action="store_true", help="只量含有測試題答案的段落")
     parser.add_argument("--auto", action="store_true", help="用 LLM 自動出題，再量含有答案的段落")
+    parser.add_argument("--labels", action="store_true", help="（搭配 --auto）段落前面加上段首標籤再量，和實際放進索引的段落一樣")
     args = parser.parse_args()
     if args.answers:
         return main_answers(args)
@@ -250,6 +251,17 @@ def generate_question(passage, answer, cache):
     return cache[key]
 
 
+def index_label(doc, pos):
+    """這個位置的段落在 experiment.py 裡會拿到的段首標籤：「【文件標題｜所屬的 ## 章節】」，沒有章節的文件只有文件標題。"""
+    text = doc["text"]
+    start = text.rfind("\n## ", 0, pos + 1)
+    title = rag.doc_title(doc)
+    if start == -1:
+        return f"【{title}】\n"
+    end = text.find("\n", start + 1)
+    return f"【{title}｜{text[start + 4:end if end != -1 else None].strip()}】\n"
+
+
 def main_auto(args):
     """和 main_answers 一樣量「上下文增益」，但不用人工測試題：
     隨機挑文件中的位置，取那裡的 AUTO_WINDOW 個 token，從中間挑一個數值當答案，請 LLM 寫出「答案是這個數值」的問題。
@@ -295,8 +307,10 @@ def main_auto(args):
                 text, offsets = encoded[d]
                 for i, j in windows(text, offsets, size):
                     if offsets[i][0] <= ans_start and ans_end <= offsets[j - 1][1]:
-                        chunk_texts.append(span(text, offsets, i, j))
-                        context_texts.append(span(text, offsets, max(0, i - CONTEXT_TOKENS), min(len(offsets), j + CONTEXT_TOKENS)))
+                        # --labels：段落和上下文都加上和 experiment.py 一樣的段首標籤，量的是「實際放進索引的段落」
+                        label = index_label(docs[d], offsets[i][0]) if args.labels else ""
+                        chunk_texts.append(label + span(text, offsets, i, j))
+                        context_texts.append(label + span(text, offsets, max(0, i - CONTEXT_TOKENS), min(len(offsets), j + CONTEXT_TOKENS)))
                         used.append(k)
                         break
             chunk_vecs, context_vecs = exp.embed_cached(chunk_texts), exp.embed_cached(context_texts)
@@ -311,7 +325,8 @@ def main_auto(args):
                   f"　（正的 {int((g > 0).sum())}/{len(g)}）", flush=True)
 
     data_name = "_".join(args.data.split(","))
-    out = exp.RESULTS_DIR / f"selfcontain_auto_{time.strftime('%Y%m%d_%H%M%S')}_{data_name}.csv"
+    suffix = "_labels" if args.labels else ""
+    out = exp.RESULTS_DIR / f"selfcontain_auto_{time.strftime('%Y%m%d_%H%M%S')}_{data_name}{suffix}.csv"
     with open(out, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=list(records[0]))
         writer.writeheader()

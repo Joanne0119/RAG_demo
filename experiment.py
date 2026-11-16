@@ -74,6 +74,12 @@ CONFIGS = [
     {"name": "token-128",       "strategy": "token",     "max_chars": 128, "overlap": 32,  "add_title": True,  "top_k": 3},
     {"name": "token-256",       "strategy": "token",     "max_chars": 256, "overlap": 64,  "add_title": True,  "top_k": 3},
     {"name": "token-512",       "strategy": "token",     "max_chars": 512, "overlap": 128, "add_title": True,  "top_k": 3},
+    # 和 token-* 相同，但不加段首標籤（結果十四：看段首的章節標題有沒有幫小段落補上下文）
+    {"name": "token-32-nt",     "strategy": "token",     "max_chars": 32,  "overlap": 8,   "add_title": False, "top_k": 3},
+    {"name": "token-64-nt",     "strategy": "token",     "max_chars": 64,  "overlap": 16,  "add_title": False, "top_k": 3},
+    {"name": "token-128-nt",    "strategy": "token",     "max_chars": 128, "overlap": 32,  "add_title": False, "top_k": 3},
+    {"name": "token-256-nt",    "strategy": "token",     "max_chars": 256, "overlap": 64,  "add_title": False, "top_k": 3},
+    {"name": "token-512-nt",    "strategy": "token",     "max_chars": 512, "overlap": 128, "add_title": False, "top_k": 3},
     # 混合檢索：向量 + BM25 關鍵字，用 RRF 合併排名。切法分別和 heading-100 / 200 / 300 / baseline 相同
     {"name": "hybrid-100",      "strategy": "heading",   "max_chars": 100, "overlap": 30,  "add_title": True,  "top_k": 3, "hybrid": True},
     {"name": "hybrid-200",      "strategy": "heading",   "max_chars": 200, "overlap": 50,  "add_title": True,  "top_k": 3, "hybrid": True},

@@ -1,0 +1,42 @@
+data_wiki    出了 40 題可用（試了 219 個位置，3s）
+data_wiki    token-32   40 段　上下文增益 +0.027 ± 0.015　（正的 24/40）
+data_wiki    token-64   40 段　上下文增益 -0.005 ± 0.011　（正的 17/40）
+data_wiki    token-128  40 段　上下文增益 -0.021 ± 0.007　（正的 12/40）
+data_wiki    token-256  40 段　上下文增益 -0.022 ± 0.005　（正的 10/40）
+逐段結果已存到 results\selfcontain_auto_20261116_114530_data_wiki_labels.csv
+data_esp32   出了 23 題可用（試了 400 個位置，2s）
+data_esp32   token-32   23 段　上下文增益 +0.054 ± 0.018　（正的 18/23）
+data_esp32   token-64   23 段　上下文增益 +0.033 ± 0.014　（正的 17/23）
+data_esp32   token-128  23 段　上下文增益 -0.023 ± 0.011　（正的 8/23）
+data_esp32   token-256  23 段　上下文增益 -0.013 ± 0.010　（正的 10/23）
+逐段結果已存到 results\selfcontain_auto_20261116_114607_data_esp32_labels.csv
+data_law     出了 40 題可用（試了 165 個位置，3s）
+data_law     token-32   40 段　上下文增益 +0.002 ± 0.014　（正的 17/40）
+data_law     token-64   40 段　上下文增益 -0.028 ± 0.009　（正的 10/40）
+data_law     token-128  40 段　上下文增益 -0.044 ± 0.008　（正的 5/40）
+data_law     token-256  40 段　上下文增益 -0.018 ± 0.006　（正的 14/40）
+逐段結果已存到 results\selfcontain_auto_20261116_114704_data_law_labels.csv
+data_rp2040  出了 40 題可用（試了 243 個位置，4s）
+data_rp2040  token-32   40 段　上下文增益 +0.024 ± 0.014　（正的 21/40）
+data_rp2040  token-64   40 段　上下文增益 -0.020 ± 0.010　（正的 13/40）
+data_rp2040  token-128  40 段　上下文增益 -0.029 ± 0.005　（正的 7/40）
+data_rp2040  token-256  40 段　上下文增益 -0.023 ± 0.006　（正的 9/40）
+逐段結果已存到 results\selfcontain_auto_20261116_114805_data_rp2040_labels.csv
+data_car     出了 38 題可用（試了 400 個位置，6s）
+data_car     token-32   38 段　上下文增益 -0.004 ± 0.015　（正的 20/38）
+data_car     token-64   38 段　上下文增益 -0.038 ± 0.010　（正的 8/38）
+data_car     token-128  38 段　上下文增益 -0.027 ± 0.008　（正的 12/38）
+data_car     token-256  38 段　上下文增益 -0.027 ± 0.006　（正的 9/38）
+逐段結果已存到 results\selfcontain_auto_20261116_114908_data_car_labels.csv
+data         出了 40 題可用（試了 143 個位置，3s）
+data         token-32   40 段　上下文增益 -0.049 ± 0.014　（正的 12/40）
+data         token-64   40 段　上下文增益 -0.036 ± 0.011　（正的 10/40）
+data         token-128  40 段　上下文增益 -0.034 ± 0.008　（正的 8/40）
+data         token-256  40 段　上下文增益 -0.017 ± 0.007　（正的 15/40）
+逐段結果已存到 results\selfcontain_auto_20261116_114952_data_labels.csv
+data_plain   出了 40 題可用（試了 128 個位置，3s）
+data_plain   token-32   40 段　上下文增益 -0.059 ± 0.015　（正的 8/40）
+data_plain   token-64   40 段　上下文增益 -0.060 ± 0.010　（正的 5/40）
+data_plain   token-128  40 段　上下文增益 -0.043 ± 0.006　（正的 5/40）
+data_plain   token-256  40 段　上下文增益 -0.015 ± 0.006　（正的 11/40）
+逐段結果已存到 results\selfcontain_auto_20261116_115031_data_plain_labels.csv
