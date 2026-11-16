@@ -134,11 +134,19 @@ def main():
             print(data.ljust(14) + "".join(fmt.format(table[data, s][idx]).rjust(11) for s in sizes))
 
     out = exp.RESULTS_DIR / f"selfcontain_{time.strftime('%Y%m%d_%H%M%S')}.csv"
+    save_records(out, records)
+    print(f"\n逐段結果已存到 {out.relative_to(rag.BASE_DIR)}")
+
+
+# 有版權的文件（PDF 不放進 git）：存 CSV 時不寫段落原文，只留題目和數字，避免原文跟著 results/ 公開
+PRIVATE_DATA = {"data_car", "data_rp2040", "data_esp32"}
+
+
+def save_records(out, records):
     with open(out, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=list(records[0]))
         writer.writeheader()
-        writer.writerows(records)
-    print(f"\n逐段結果已存到 {out.relative_to(rag.BASE_DIR)}")
+        writer.writerows({**r, "chunk": ""} if r.get("data") in PRIVATE_DATA else r for r in records)
 
 
 # ---------- 只量「含有答案的段落」 ----------
@@ -201,10 +209,7 @@ def main_answers(args):
 
     data_name = "_".join(args.data.split(","))
     out = exp.RESULTS_DIR / f"selfcontain_answers_{time.strftime('%Y%m%d_%H%M%S')}_{data_name}.csv"
-    with open(out, "w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.DictWriter(f, fieldnames=list(records[0]))
-        writer.writeheader()
-        writer.writerows(records)
+    save_records(out, records)
     print(f"逐段結果已存到 {out.relative_to(rag.BASE_DIR)}")
 
 
@@ -327,10 +332,7 @@ def main_auto(args):
     data_name = "_".join(args.data.split(","))
     suffix = "_labels" if args.labels else ""
     out = exp.RESULTS_DIR / f"selfcontain_auto_{time.strftime('%Y%m%d_%H%M%S')}_{data_name}{suffix}.csv"
-    with open(out, "w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.DictWriter(f, fieldnames=list(records[0]))
-        writer.writeheader()
-        writer.writerows(records)
+    save_records(out, records)
     print(f"逐段結果已存到 {out.relative_to(rag.BASE_DIR)}")
 
 
