@@ -5,7 +5,10 @@
 
   data_car/     Honda FIT 2017 車主手冊（繁體中文，325 頁，全部使用）
   data_rp2040/  RP2040 Datasheet（英文，642 頁太大，只取部分章節，約 48 頁）
+  data_law/     勞動基準法全文（全國法規資料庫，存成純文字；法律條文不受著作權保護，可以放進 git）
 """
+import html
+import re
 import urllib.request
 
 import pymupdf
@@ -27,7 +30,33 @@ MANUALS = [
 ]
 
 
+LAW = {
+    "url": "https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=N0030001",
+    "path": rag.BASE_DIR / "data_law" / "勞動基準法.txt",
+}
+
+
+def download_law():
+    """把全國法規資料庫的網頁轉成純文字：章名一行、「第 X 條」一行，條文的每一項、每一款各一行。"""
+    request = urllib.request.Request(LAW["url"], headers={"User-Agent": "Mozilla/5.0"})
+    page = urllib.request.urlopen(request).read().decode("utf-8")
+    pattern = re.compile(r'<div class="h3 char-2">(.*?)</div>|name="[^"]+">(第 [^<]+ 條)</a>|<div class="line-\d+[^"]*">(.*?)</div>')
+    lines = []
+    for chapter, article, line in pattern.findall(page):
+        if chapter:
+            lines += ["", " ".join(chapter.split()).replace(" ", "")]  # 「第 一 章 總則」→「第一章總則」
+        elif article:
+            lines.append(article)
+        else:
+            lines.append(html.unescape(re.sub(r"<[^>]+>", "", line)).strip())
+    LAW["path"].parent.mkdir(exist_ok=True)
+    LAW["path"].write_text("勞動基準法\n" + "\n".join(lines).strip() + "\n", encoding="utf-8")
+    print(f"  存到 {LAW['path'].relative_to(rag.BASE_DIR)}（{len(lines)} 行）")
+
+
 def main():
+    print("下載 勞動基準法 …")
+    download_law()
     for m in MANUALS:
         m["path"].parent.mkdir(exist_ok=True)
         print(f"下載 {m['path'].name} …")

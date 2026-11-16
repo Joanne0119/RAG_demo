@@ -141,7 +141,7 @@ def main():
 
 
 # ---------- 只量「含有答案的段落」 ----------
-TESTS_OF = {"data": "evaluate", "data_plain": "evaluate", "data_car": "tests_car", "data_rp2040": "tests_rp2040"}
+TESTS_OF = {"data": "evaluate", "data_plain": "evaluate", "data_car": "tests_car", "data_rp2040": "tests_rp2040", "data_law": "tests_law"}
 MAX_ANSWER_CHUNKS = 3  # 關鍵字出現在超過這麼多段的題目（例如答案只是「80」）找不出哪段才是答案，略過
 
 
@@ -216,7 +216,10 @@ QUESTION_CACHE_PATH = rag.BASE_DIR / "cache" / "selfcontain_questions.json"
 VALUE_PATTERN = re.compile(
     r"(?<![\w.])\d[\d,.]*[ ]?(?:"
     r"(?:mV|V|mA|uA|µA|μA|A|W|mW|MHz|kHz|GHz|Hz|KB|kB|MB|Mbps|bits?|ns|us|µs|μs|ms|s|°C|kPa|psi|mm|cm|km/h|kg|L|Ω|ohm)(?![A-Za-z])"
-    r"|%|公升|公克|公斤|公里|公釐|分鐘|小時|秒|個月|年|元|伏特|瓦)")
+    r"|%|公升|公克|公斤|公里|公釐|分鐘|小時|秒|個月|年|元|伏特|瓦)"
+    # 中文數字（法律條文用的寫法）：「三十日」「六個月」「四十五萬元」「百分之六十」
+    r"|(?<![一二三四五六七八九十百千萬兩])(?:百分之[一二三四五六七八九十百]+"
+    r"|[一二三四五六七八九十百千萬兩]+(?:個月|小時|分鐘|日|週|年|萬元|元|歲))")
 QUESTION_PROMPT = """以下是一份說明文件的節錄。節錄中的「{answer}」是某個問題的答案。
 請寫出使用者會問的那個問題：用繁體中文寫一句話，要讓人看得懂在問什麼東西（不要寫「這個」「上述」），不能包含答案本身。
 只輸出問題。
