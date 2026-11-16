@@ -5,6 +5,7 @@
 
   data_car/     Honda FIT 2017 車主手冊（繁體中文，325 頁，全部使用）
   data_rp2040/  RP2040 Datasheet（英文，642 頁太大，只取部分章節，約 48 頁）
+  data_esp32/   ESP32-C3 技術規格書（簡體中文，73 頁，全部使用）
   data_law/     勞動基準法全文（全國法規資料庫，存成純文字；法律條文不受著作權保護，可以放進 git）
 """
 import html
@@ -26,6 +27,11 @@ MANUALS = [
         "path": rag.BASE_DIR / "data_rp2040" / "rp2040-datasheet.pdf",
         # PDF 頁碼（從 1 開始）：1 Introduction、2.9～2.10 電源與穩壓器、2.16 晶體振盪器、4.9 ADC、5 電氣規格
         "pages": [(9, 14), (151, 160), (217, 221), (558, 567), (608, 625)],
+    },
+    {
+        "url": "https://www.espressif.com/sites/default/files/documentation/esp32-c3_datasheet_cn.pdf",
+        "path": rag.BASE_DIR / "data_esp32" / "esp32-c3_datasheet_cn.pdf",
+        "pages": None,
     },
 ]
 

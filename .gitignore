@@ -12,3 +12,4 @@ data_rp2040/
 
 # Contextual Retrieval 產生的上下文（從有版權的文件衍生，用 experiment.py 重新產生）
 cache/
+data_esp32/
