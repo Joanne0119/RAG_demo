@@ -33,6 +33,7 @@ import numpy as np
 import ollama
 from tokenizers import Tokenizer
 
+import drcd
 import experiment as exp
 import rag_core as rag
 from evaluate import contains_all
@@ -95,7 +96,8 @@ def main():
 
     records, table = [], {}
     for data in args.data.split(","):
-        docs = rag.load_documents(rag.BASE_DIR / data)
+        # --data drcd：DRCD test 的 378 篇文章（見 drcd.py），其他名稱是資料夾
+        docs = drcd.load()[0] if data == "drcd" else rag.load_documents(rag.BASE_DIR / data)
         encoded = [(d["text"], tokenizer.encode(d["text"], add_special_tokens=False).offsets) for d in docs]
         for size in sizes:
             start = time.time()
@@ -169,7 +171,8 @@ def main_answers(args):
     for data in args.data.split(","):
         tests_module = importlib.import_module(TESTS_OF[data])
         tests = tests_module.TESTS[:tests_module.TRAP_START]
-        docs = rag.load_documents(rag.BASE_DIR / data)
+        # --data drcd：DRCD test 的 378 篇文章（見 drcd.py），其他名稱是資料夾
+        docs = drcd.load()[0] if data == "drcd" else rag.load_documents(rag.BASE_DIR / data)
         encoded = [(d["text"], tokenizer.encode(d["text"], add_special_tokens=False).offsets) for d in docs]
         for size in sizes:
             start = time.time()
@@ -280,7 +283,8 @@ def main_auto(args):
     records = []
     for data in args.data.split(","):
         start = time.time()
-        docs = rag.load_documents(rag.BASE_DIR / data)
+        # --data drcd：DRCD test 的 378 篇文章（見 drcd.py），其他名稱是資料夾
+        docs = drcd.load()[0] if data == "drcd" else rag.load_documents(rag.BASE_DIR / data)
         encoded = [(d["text"], tokenizer.encode(d["text"], add_special_tokens=False).offsets) for d in docs]
         anchors = [(d, a) for d, (_, offsets) in enumerate(encoded) for a in range(0, max(1, len(offsets) - AUTO_WINDOW), 16)]
         rng = random.Random(SEED)
