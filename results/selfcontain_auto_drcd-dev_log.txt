@@ -1,0 +1,7 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+drcd-dev     出了 40 題可用（試了 289 個位置，156s）
+drcd-dev     token-32   40 段　上下文增益 +0.057 ± 0.020　（正的 28/40）
+drcd-dev     token-64   40 段　上下文增益 +0.012 ± 0.013　（正的 21/40）
+drcd-dev     token-128  40 段　上下文增益 -0.018 ± 0.009　（正的 15/40）
+drcd-dev     token-256  40 段　上下文增益 -0.017 ± 0.007　（正的 14/40）
+逐段結果已存到 results\selfcontain_auto_20261117_222830_drcd-dev.csv

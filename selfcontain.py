@@ -44,6 +44,13 @@ TOPIC_TOP_K = 5       # 主題檢索時，這段排進前幾名算「找得回�
 CONTEXT_TOKENS = 128  # 上下文相似度：前後各多看幾個 token
 CACHE_PATH = rag.BASE_DIR / "cache" / "selfcontain_topics.json"
 
+
+def load_docs(data):
+    """--data drcd / drcd-dev：DRCD test / dev 的文章（見 drcd.py）；其他名稱是資料夾。"""
+    if data.startswith("drcd"):
+        return drcd.load("dev" if data == "drcd-dev" else "test")[0]
+    return rag.load_documents(rag.BASE_DIR / data)
+
 TOPIC_PROMPT = """以下是從一份說明文件中隨機抽出的一段文字，看不到它前後的內容。
 請只根據這段文字，用不超過 12 個字寫出它在講的主題，例如「後輪胎壓」「UART 鮑率設定」「BOD 電壓門檻」。
 只寫主題名稱，不要寫數值，不要解釋。
@@ -96,8 +103,7 @@ def main():
 
     records, table = [], {}
     for data in args.data.split(","):
-        # --data drcd：DRCD test 的 378 篇文章（見 drcd.py），其他名稱是資料夾
-        docs = drcd.load()[0] if data == "drcd" else rag.load_documents(rag.BASE_DIR / data)
+        docs = load_docs(data)
         encoded = [(d["text"], tokenizer.encode(d["text"], add_special_tokens=False).offsets) for d in docs]
         for size in sizes:
             start = time.time()
@@ -171,8 +177,7 @@ def main_answers(args):
     for data in args.data.split(","):
         tests_module = importlib.import_module(TESTS_OF[data])
         tests = tests_module.TESTS[:tests_module.TRAP_START]
-        # --data drcd：DRCD test 的 378 篇文章（見 drcd.py），其他名稱是資料夾
-        docs = drcd.load()[0] if data == "drcd" else rag.load_documents(rag.BASE_DIR / data)
+        docs = load_docs(data)
         encoded = [(d["text"], tokenizer.encode(d["text"], add_special_tokens=False).offsets) for d in docs]
         for size in sizes:
             start = time.time()
@@ -283,8 +288,7 @@ def main_auto(args):
     records = []
     for data in args.data.split(","):
         start = time.time()
-        # --data drcd：DRCD test 的 378 篇文章（見 drcd.py），其他名稱是資料夾
-        docs = drcd.load()[0] if data == "drcd" else rag.load_documents(rag.BASE_DIR / data)
+        docs = load_docs(data)
         encoded = [(d["text"], tokenizer.encode(d["text"], add_special_tokens=False).offsets) for d in docs]
         anchors = [(d, a) for d, (_, offsets) in enumerate(encoded) for a in range(0, max(1, len(offsets) - AUTO_WINDOW), 16)]
         rng = random.Random(SEED)
